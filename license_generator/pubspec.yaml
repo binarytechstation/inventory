@@ -1,0 +1,11 @@
+name: license_generator
+description: License Generator CLI Tool for Inventory Management System
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  crypto: ^3.0.5
+  encrypt: ^5.0.3
+  pointycastle: ^3.9.1
