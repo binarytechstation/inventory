@@ -17,7 +17,7 @@ class TransactionService {
     required double total,
     required String paymentMode, // 'cash' or 'credit'
     String? notes,
-    String status = 'COMPLETED',
+    String status = 'completed',
   }) async {
     final db = await _dbHelper.database;
 
@@ -25,52 +25,33 @@ class TransactionService {
       // Generate invoice number
       final invoiceNo = await _generateInvoiceNumber(txn, type);
 
-      // Get party name
-      String? partyName;
-      if (partyType == 'customer') {
-        final customers = await txn.query('customers', where: 'id = ?', whereArgs: [partyId]);
-        partyName = customers.isNotEmpty ? customers.first['name'] as String? : null;
-      } else {
-        final suppliers = await txn.query('suppliers', where: 'id = ?', whereArgs: [partyId]);
-        partyName = suppliers.isNotEmpty ? suppliers.first['name'] as String? : null;
-      }
-
       // Create transaction record
       final transactionId = await txn.insert('transactions', {
-        'invoice_number': invoiceNo,
-        'transaction_type': type,
-        'transaction_date': date.toIso8601String(),
+        'invoice_no': invoiceNo,
+        'type': type,
+        'date': date.toIso8601String(),
         'party_id': partyId,
         'party_type': partyType,
-        'party_name': partyName,
         'subtotal': subtotal,
-        'discount_amount': discount,
-        'tax_amount': tax,
-        'total_amount': total,
+        'discount': discount,
+        'tax': tax,
+        'total': total,
         'payment_mode': paymentMode,
         'status': status,
         'notes': notes,
         'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
       });
 
       // Insert transaction lines and update inventory
       for (final item in items) {
-        // Get product details
-        final products = await txn.query('products', where: 'id = ?', whereArgs: [item['product_id']]);
-        final productName = products.isNotEmpty ? products.first['name'] as String : 'Unknown';
-        final productUnit = products.isNotEmpty ? products.first['unit'] as String? : 'piece';
-
         await txn.insert('transaction_lines', {
           'transaction_id': transactionId,
           'product_id': item['product_id'],
-          'product_name': productName,
           'quantity': item['quantity'],
-          'unit': productUnit,
           'unit_price': item['unit_price'],
-          'discount_amount': item['discount'] ?? 0,
-          'tax_amount': item['tax'] ?? 0,
-          'line_total': item['subtotal'],
+          'discount': item['discount'] ?? 0,
+          'tax': item['tax'] ?? 0,
+          'subtotal': item['subtotal'],
         });
 
         // Update inventory based on transaction type
@@ -81,9 +62,9 @@ class TransactionService {
             'purchase_price': item['unit_price'],
             'quantity_added': item['quantity'],
             'quantity_remaining': item['quantity'],
-            'purchase_date': date.toIso8601String(),
+            'batch_date': date.toIso8601String(),
             'supplier_id': partyId,
-            'created_at': DateTime.now().toIso8601String(),
+            'transaction_id': transactionId,
           });
         } else if (type == 'SELL') {
           // Reduce stock using FIFO method
@@ -124,7 +105,7 @@ class TransactionService {
     final result = await txn.rawQuery('''
       SELECT COUNT(*) as count
       FROM transactions
-      WHERE transaction_type = ? AND strftime('%Y', transaction_date) = ?
+      WHERE type = ? AND strftime('%Y', date) = ?
     ''', [type, year.toString()]);
 
     final count = (result.first['count'] as int?) ?? 0;
@@ -142,7 +123,7 @@ class TransactionService {
       'product_batches',
       where: 'product_id = ? AND quantity_remaining > 0',
       whereArgs: [productId],
-      orderBy: 'purchase_date ASC',
+      orderBy: 'batch_date ASC',
     );
 
     for (final batch in batches) {
@@ -175,9 +156,9 @@ class TransactionService {
       'purchase_price': 0, // Return items
       'quantity_added': quantity,
       'quantity_remaining': quantity,
-      'purchase_date': DateTime.now().toIso8601String(),
+      'batch_date': DateTime.now().toIso8601String(),
       'supplier_id': supplierId,
-      'created_at': DateTime.now().toIso8601String(),
+      'transaction_id': null,
     });
   }
 
@@ -188,7 +169,7 @@ class TransactionService {
     DateTime? endDate,
     int? partyId,
     String? paymentMode,
-    String sortBy = 'transaction_date',
+    String sortBy = 'date',
     String sortOrder = 'DESC',
   }) async {
     final db = await _dbHelper.database;
@@ -197,17 +178,17 @@ class TransactionService {
     final whereArgs = <dynamic>[];
 
     if (type != null) {
-      whereConditions.add('transaction_type = ?');
+      whereConditions.add('type = ?');
       whereArgs.add(type);
     }
 
     if (startDate != null) {
-      whereConditions.add('transaction_date >= ?');
+      whereConditions.add('date >= ?');
       whereArgs.add(startDate.toIso8601String());
     }
 
     if (endDate != null) {
-      whereConditions.add('transaction_date <= ?');
+      whereConditions.add('date <= ?');
       whereArgs.add(endDate.toIso8601String());
     }
 
@@ -251,13 +232,40 @@ class TransactionService {
     final transaction = Map<String, dynamic>.from(transactions.first);
 
     // Get transaction lines
-    final lines = await db.query(
-      'transaction_lines',
-      where: 'transaction_id = ?',
-      whereArgs: [id],
-    );
+    final lines = await db.rawQuery('''
+      SELECT
+        tl.*,
+        p.name as product_name,
+        p.sku as product_sku,
+        p.unit as product_unit
+      FROM transaction_lines tl
+      JOIN products p ON tl.product_id = p.id
+      WHERE tl.transaction_id = ?
+    ''', [id]);
 
     transaction['lines'] = lines;
+
+    // Get party details
+    final partyType = transaction['party_type'] as String;
+    final partyId = transaction['party_id'] as int;
+
+    if (partyType == 'customer') {
+      final customers = await db.query(
+        'customers',
+        where: 'id = ?',
+        whereArgs: [partyId],
+        limit: 1,
+      );
+      transaction['party'] = customers.isNotEmpty ? customers.first : null;
+    } else {
+      final suppliers = await db.query(
+        'suppliers',
+        where: 'id = ?',
+        whereArgs: [partyId],
+        limit: 1,
+      );
+      transaction['party'] = suppliers.isNotEmpty ? suppliers.first : null;
+    }
 
     return transaction;
   }
@@ -272,13 +280,13 @@ class TransactionService {
     final result = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
-        COALESCE(SUM(total_amount), 0) as total_sales,
-        COALESCE(SUM(CASE WHEN payment_mode = 'cash' THEN total_amount ELSE 0 END), 0) as cash_sales,
-        COALESCE(SUM(CASE WHEN payment_mode = 'credit' THEN total_amount ELSE 0 END), 0) as credit_sales
+        COALESCE(SUM(total), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN payment_mode = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
+        COALESCE(SUM(CASE WHEN payment_mode = 'credit' THEN total ELSE 0 END), 0) as credit_sales
       FROM transactions
-      WHERE transaction_type = 'SELL'
-        AND transaction_date >= ?
-        AND transaction_date < ?
+      WHERE type = 'SELL'
+        AND date >= ?
+        AND date < ?
     ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
 
     return result.first;
@@ -294,11 +302,11 @@ class TransactionService {
     final result = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
-        COALESCE(SUM(total_amount), 0) as total_purchases
+        COALESCE(SUM(total), 0) as total_purchases
       FROM transactions
-      WHERE transaction_type = 'BUY'
-        AND transaction_date >= ?
-        AND transaction_date < ?
+      WHERE type = 'BUY'
+        AND date >= ?
+        AND date < ?
     ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
 
     return result.first;
@@ -311,15 +319,15 @@ class TransactionService {
     final result = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
-        COALESCE(SUM(total_amount), 0) as total_sales,
+        COALESCE(SUM(total), 0) as total_sales,
         COALESCE(SUM(subtotal), 0) as subtotal,
-        COALESCE(SUM(discount_amount), 0) as total_discount,
-        COALESCE(SUM(tax_amount), 0) as total_tax,
-        COALESCE(AVG(total_amount), 0) as average_sale
+        COALESCE(SUM(discount), 0) as total_discount,
+        COALESCE(SUM(tax), 0) as total_tax,
+        COALESCE(AVG(total), 0) as average_sale
       FROM transactions
-      WHERE transaction_type = 'SELL'
-        AND transaction_date >= ?
-        AND transaction_date <= ?
+      WHERE type = 'SELL'
+        AND date >= ?
+        AND date <= ?
     ''', [startDate.toIso8601String(), endDate.toIso8601String()]);
 
     return result.first;
@@ -343,7 +351,7 @@ class TransactionService {
       }
 
       final transaction = transactions.first;
-      final type = transaction['transaction_type'] as String;
+      final type = transaction['type'] as String;
 
       // Get transaction lines
       final lines = await txn.query(
@@ -373,7 +381,7 @@ class TransactionService {
       // Mark transaction as cancelled
       await txn.update(
         'transactions',
-        {'status': 'CANCELLED'},
+        {'status': 'cancelled'},
         where: 'id = ?',
         whereArgs: [transactionId],
       );

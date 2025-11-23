@@ -158,16 +158,17 @@ class DatabaseSchema {
     )
   ''';
 
-  // Held bills table (for incomplete sales)
+  // Held bills table (for incomplete sales and purchases)
   static const String createHeldBillsTable = '''
     CREATE TABLE held_bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      bill_name TEXT NOT NULL,
-      customer_id INTEGER,
-      customer_name TEXT,
+      bill_name TEXT,
+      type TEXT NOT NULL,
+      party_id INTEGER,
+      party_type TEXT,
+      party_name TEXT,
       subtotal REAL DEFAULT 0,
       discount_amount REAL DEFAULT 0,
-      discount_percentage REAL DEFAULT 0,
       tax_amount REAL DEFAULT 0,
       total_amount REAL DEFAULT 0,
       payment_mode TEXT,
@@ -175,14 +176,13 @@ class DatabaseSchema {
       created_by INTEGER,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (customer_id) REFERENCES customers(id),
       FOREIGN KEY (created_by) REFERENCES users(id)
     )
   ''';
 
-  // Held bill lines table
+  // Held bill items table
   static const String createHeldBillLinesTable = '''
-    CREATE TABLE held_bill_lines (
+    CREATE TABLE held_bill_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       held_bill_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
@@ -191,9 +191,7 @@ class DatabaseSchema {
       unit TEXT,
       unit_price REAL NOT NULL,
       discount_amount REAL DEFAULT 0,
-      discount_percentage REAL DEFAULT 0,
       tax_amount REAL DEFAULT 0,
-      tax_rate REAL DEFAULT 0,
       line_total REAL NOT NULL,
       FOREIGN KEY (held_bill_id) REFERENCES held_bills(id) ON DELETE CASCADE,
       FOREIGN KEY (product_id) REFERENCES products(id)

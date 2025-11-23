@@ -18,30 +18,48 @@ class HeldBillsService {
   }) async {
     final db = await _dbHelper.database;
 
+    // Get party name
+    String? partyName;
+    if (partyType == 'customer') {
+      final customers = await db.query('customers', where: 'id = ?', whereArgs: [partyId]);
+      partyName = customers.isNotEmpty ? customers.first['name'] as String? : null;
+    } else {
+      final suppliers = await db.query('suppliers', where: 'id = ?', whereArgs: [partyId]);
+      partyName = suppliers.isNotEmpty ? suppliers.first['name'] as String? : null;
+    }
+
     final heldBillId = await db.insert('held_bills', {
       'type': type,
       'party_id': partyId,
       'party_type': partyType,
+      'party_name': partyName,
       'subtotal': subtotal,
-      'discount': discount,
-      'tax': tax,
-      'total': total,
+      'discount_amount': discount,
+      'tax_amount': tax,
+      'total_amount': total,
       'notes': notes,
-      'bill_name': billName,
+      'bill_name': billName ?? 'Held Bill #${DateTime.now().millisecondsSinceEpoch}',
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     });
 
     // Insert held bill items
     for (final item in items) {
+      // Get product details
+      final products = await db.query('products', where: 'id = ?', whereArgs: [item['product_id']]);
+      final productName = products.isNotEmpty ? products.first['name'] as String : 'Unknown';
+      final productUnit = products.isNotEmpty ? products.first['unit'] as String? : 'piece';
+
       await db.insert('held_bill_items', {
         'held_bill_id': heldBillId,
         'product_id': item['product_id'],
+        'product_name': productName,
         'quantity': item['quantity'],
+        'unit': productUnit,
         'unit_price': item['unit_price'],
-        'discount': item['discount'] ?? 0,
-        'tax': item['tax'] ?? 0,
-        'subtotal': item['subtotal'],
+        'discount_amount': item['discount'] ?? 0,
+        'tax_amount': item['tax'] ?? 0,
+        'line_total': item['subtotal'],
       });
     }
 
@@ -187,9 +205,9 @@ class HeldBillsService {
         'held_bills',
         {
           'subtotal': subtotal,
-          'discount': discount,
-          'tax': tax,
-          'total': total,
+          'discount_amount': discount,
+          'tax_amount': tax,
+          'total_amount': total,
           'notes': notes,
           'bill_name': billName,
           'updated_at': DateTime.now().toIso8601String(),
@@ -207,14 +225,21 @@ class HeldBillsService {
 
       // Insert new items
       for (final item in items) {
+        // Get product details
+        final products = await txn.query('products', where: 'id = ?', whereArgs: [item['product_id']]);
+        final productName = products.isNotEmpty ? products.first['name'] as String : 'Unknown';
+        final productUnit = products.isNotEmpty ? products.first['unit'] as String? : 'piece';
+
         await txn.insert('held_bill_items', {
           'held_bill_id': id,
           'product_id': item['product_id'],
+          'product_name': productName,
           'quantity': item['quantity'],
+          'unit': productUnit,
           'unit_price': item['unit_price'],
-          'discount': item['discount'] ?? 0,
-          'tax': item['tax'] ?? 0,
-          'subtotal': item['subtotal'],
+          'discount_amount': item['discount'] ?? 0,
+          'tax_amount': item['tax'] ?? 0,
+          'line_total': item['subtotal'],
         });
       }
     });
