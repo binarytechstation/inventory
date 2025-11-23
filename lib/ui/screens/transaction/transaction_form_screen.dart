@@ -42,7 +42,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   double _tax = 0;
   double _total = 0;
 
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isSaving = false;
 
   @override

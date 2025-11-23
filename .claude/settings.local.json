@@ -8,7 +8,8 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(dart pub get:*)",
-      "Bash(dart run:*)"
+      "Bash(dart run:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

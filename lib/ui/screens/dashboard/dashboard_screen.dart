@@ -8,6 +8,8 @@ import '../transaction/transactions_screen.dart';
 import '../user/users_screen.dart';
 import '../settings/settings_screen.dart';
 import '../held_bills/held_bills_screen.dart';
+import '../reports/reports_screen.dart';
+import '../pos/pos_screen.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 
@@ -198,7 +200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 5:
         return const HeldBillsScreen();
       case 6:
-        return _buildPlaceholder('Reports', Icons.analytics);
+        return const ReportsScreen();
       case 7:
         return const UsersScreen();
       case 8:
@@ -213,6 +215,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const POSScreen()),
+              );
+            },
+            icon: const Icon(Icons.point_of_sale),
+            label: const Text('New Sale'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
           if (_isLoadingKPIs)
             const Center(
               child: Padding(
@@ -229,6 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: const Icon(Icons.refresh),
               onPressed: _loadDashboardData,
             ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -438,35 +456,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildPlaceholder(String title, IconData icon) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 100, color: Colors.grey[300]),
-            const SizedBox(height: 24),
-            Text(
-              '$title Module',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This module is under development',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _handleLogout(BuildContext context) {
     showDialog(
