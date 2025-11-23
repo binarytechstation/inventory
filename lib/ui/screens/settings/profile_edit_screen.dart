@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../../../data/models/user_model.dart';
 import '../../../services/auth/auth_service.dart';
 import '../../providers/auth_provider.dart';
@@ -22,6 +26,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late TextEditingController _phoneController;
 
   bool _isLoading = false;
+  String? _selectedImagePath;
 
   @override
   void initState() {
@@ -29,6 +34,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _nameController = TextEditingController(text: widget.user.name);
     _emailController = TextEditingController(text: widget.user.email ?? '');
     _phoneController = TextEditingController(text: widget.user.phone ?? '');
+    _selectedImagePath = widget.user.profilePicturePath;
   }
 
   @override
@@ -37,6 +43,65 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickProfilePicture() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['png', 'jpg', 'jpeg'],
+        dialogTitle: 'Select Profile Picture',
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return; // User cancelled
+      }
+
+      final pickedFile = result.files.first;
+      if (pickedFile.path == null) {
+        throw Exception('Invalid file path');
+      }
+
+      // Get app data directory
+      final appDataDir = await getApplicationDocumentsDirectory();
+      final profilePicturesDir = Directory(path.join(appDataDir.path, 'profile_pictures'));
+
+      // Create directory if it doesn't exist
+      if (!await profilePicturesDir.exists()) {
+        await profilePicturesDir.create(recursive: true);
+      }
+
+      // Create unique filename
+      final fileName = 'user_${widget.user.id}.jpg';
+      final destinationPath = path.join(profilePicturesDir.path, fileName);
+
+      // Copy file to app data directory
+      final sourceFile = File(pickedFile.path!);
+      await sourceFile.copy(destinationPath);
+
+      // Update state with new image path
+      setState(() {
+        _selectedImagePath = destinationPath;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture selected. Click "Save Changes" to update.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting profile picture: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _saveProfile() async {
@@ -49,6 +114,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         name: _nameController.text.trim(),
         email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        profilePicturePath: _selectedImagePath,
         updatedAt: DateTime.now(),
       );
 
@@ -100,24 +166,32 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   CircleAvatar(
                     radius: 60,
                     backgroundColor: Colors.blue,
-                    child: Text(
-                      widget.user.name.substring(0, 1).toUpperCase(),
-                      style: const TextStyle(fontSize: 48, color: Colors.white),
-                    ),
+                    backgroundImage: _selectedImagePath != null && File(_selectedImagePath!).existsSync()
+                        ? FileImage(File(_selectedImagePath!))
+                        : null,
+                    child: _selectedImagePath == null || !File(_selectedImagePath!).existsSync()
+                        ? Text(
+                            widget.user.name.substring(0, 1).toUpperCase(),
+                            style: const TextStyle(fontSize: 48, color: Colors.white),
+                          )
+                        : null,
                   ),
                   Positioned(
                     bottom: 0,
                     right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        color: Colors.white,
-                        size: 20,
+                    child: GestureDetector(
+                      onTap: _pickProfilePicture,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.blue,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ),
@@ -127,11 +201,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             const SizedBox(height: 8),
             Center(
               child: TextButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Profile picture feature coming soon')),
-                  );
-                },
+                onPressed: _pickProfilePicture,
                 icon: const Icon(Icons.edit),
                 label: const Text('Change Profile Picture'),
               ),

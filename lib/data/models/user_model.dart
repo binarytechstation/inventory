@@ -6,6 +6,7 @@ class UserModel {
   final String name;
   final String? email;
   final String? phone;
+  final String? profilePicturePath;
   final bool isActive;
   final bool mustChangePassword;
   final DateTime createdAt;
@@ -20,6 +21,7 @@ class UserModel {
     required this.name,
     this.email,
     this.phone,
+    this.profilePicturePath,
     this.isActive = true,
     this.mustChangePassword = false,
     required this.createdAt,
@@ -36,6 +38,7 @@ class UserModel {
       'name': name,
       'email': email,
       'phone': phone,
+      'profile_picture_path': profilePicturePath,
       'is_active': isActive ? 1 : 0,
       'must_change_password': mustChangePassword ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
@@ -53,6 +56,7 @@ class UserModel {
       name: map['name'] as String,
       email: map['email'] as String?,
       phone: map['phone'] as String?,
+      profilePicturePath: map['profile_picture_path'] as String?,
       isActive: (map['is_active'] as int) == 1,
       mustChangePassword: (map['must_change_password'] as int) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
@@ -69,6 +73,7 @@ class UserModel {
     String? name,
     String? email,
     String? phone,
+    String? profilePicturePath,
     bool? isActive,
     bool? mustChangePassword,
     DateTime? createdAt,
@@ -83,6 +88,7 @@ class UserModel {
       name: name ?? this.name,
       email: email ?? this.email,
       phone: phone ?? this.phone,
+      profilePicturePath: profilePicturePath ?? this.profilePicturePath,
       isActive: isActive ?? this.isActive,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       createdAt: createdAt ?? this.createdAt,

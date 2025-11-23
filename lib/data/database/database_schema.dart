@@ -9,6 +9,7 @@ class DatabaseSchema {
       name TEXT NOT NULL,
       email TEXT,
       phone TEXT,
+      profile_picture_path TEXT,
       is_active INTEGER DEFAULT 1,
       must_change_password INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
