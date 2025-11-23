@@ -83,7 +83,7 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  bool _isInitializing = true;
+  final bool _isInitializing = true;
   String _initializationMessage = 'Initializing...';
 
   @override
