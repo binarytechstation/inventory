@@ -5,13 +5,13 @@ class ProductService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
   // Get all products
-  Future<List<ProductModel>> getAllProducts() async {
+  Future<List<ProductModel>> getAllProducts({String sortBy = 'name'}) async {
     final db = await _dbHelper.database;
     final maps = await db.query(
       'products',
       where: 'is_active = ?',
       whereArgs: [1],
-      orderBy: 'name ASC',
+      orderBy: '$sortBy ASC',
     );
     return maps.map((map) => ProductModel.fromMap(map)).toList();
   }
@@ -155,6 +155,9 @@ class ProductService {
       whereArgs: [id],
     );
   }
+
+  // Alias for consistency with other services
+  Future<int> deactivateProduct(int id) => deleteProduct(id);
 
   // Get total product count
   Future<int> getProductCount() async {

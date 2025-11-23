@@ -53,4 +53,21 @@ class AuthProvider extends ChangeNotifier {
   bool hasPermission(String permission) {
     return _currentUser?.hasPermission(permission) ?? false;
   }
+
+  Future<void> refreshCurrentUser() async {
+    if (_currentUser == null) return;
+
+    try {
+      final users = await _authService.getAllUsers();
+      final updatedUser = users.firstWhere(
+        (user) => user.id == _currentUser!.id,
+        orElse: () => _currentUser!,
+      );
+      _currentUser = updatedUser;
+      notifyListeners();
+    } catch (e) {
+      // If refresh fails, keep the current user
+      print('Error refreshing user: $e');
+    }
+  }
 }

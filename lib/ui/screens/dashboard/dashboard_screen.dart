@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../supplier/suppliers_screen.dart';
+import '../customer/customers_screen.dart';
+import '../product/products_screen.dart';
+import '../transaction/transactions_screen.dart';
+import '../user/users_screen.dart';
+import '../settings/settings_screen.dart';
+import '../held_bills/held_bills_screen.dart';
+import '../../../services/product/product_service.dart';
+import '../../../services/transaction/transaction_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,6 +20,15 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
+  final ProductService _productService = ProductService();
+  final TransactionService _transactionService = TransactionService();
+
+  // KPI Data
+  Map<String, dynamic>? _todaysSales;
+  Map<String, dynamic>? _todaysPurchases;
+  int _lowStockCount = 0;
+  int _totalProducts = 0;
+  bool _isLoadingKPIs = false;
 
   final List<String> _menuTitles = [
     'Dashboard',
@@ -37,6 +55,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    setState(() => _isLoadingKPIs = true);
+    try {
+      final sales = await _transactionService.getTodaysSales();
+      final purchases = await _transactionService.getTodaysPurchases();
+      final lowStock = await _productService.getLowStockProducts();
+      final productCount = await _productService.getProductCount();
+
+      setState(() {
+        _todaysSales = sales;
+        _todaysPurchases = purchases;
+        _lowStockCount = lowStock.length;
+        _totalProducts = productCount;
+        _isLoadingKPIs = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingKPIs = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading dashboard: $e')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.currentUser;
@@ -45,73 +94,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Row(
         children: [
           // Left sidebar navigation
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            labelType: NavigationRailLabelType.all,
-            leading: Column(
-              children: [
-                const SizedBox(height: 8),
-                const Icon(Icons.inventory_2, size: 48, color: Colors.blue),
-                const SizedBox(height: 8),
-                const Text(
-                  'Inventory',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-            trailing: Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+          SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height,
+              ),
+              child: IntrinsicHeight(
+                child: NavigationRail(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) {
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  leading: Column(
                     children: [
-                      CircleAvatar(
-                        child: Text(
-                          user?.name.substring(0, 1).toUpperCase() ?? 'U',
+                      const SizedBox(height: 8),
+                      const Icon(Icons.inventory_2, size: 48, color: Colors.blue),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Inventory',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        user?.name ?? 'User',
-                        style: const TextStyle(fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
-                      Text(
-                        user?.role ?? '',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      IconButton(
-                        icon: const Icon(Icons.logout),
-                        tooltip: 'Logout',
-                        onPressed: () {
-                          _handleLogout(context);
-                        },
-                      ),
+                      const SizedBox(height: 24),
                     ],
                   ),
+                  trailing: Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              child: Text(
+                                user?.name.substring(0, 1).toUpperCase() ?? 'U',
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              user?.name ?? 'User',
+                              style: const TextStyle(fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                            Text(
+                              user?.role ?? '',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            IconButton(
+                              icon: const Icon(Icons.logout),
+                              tooltip: 'Logout',
+                              onPressed: () {
+                                _handleLogout(context);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  destinations: List.generate(
+                    _menuTitles.length,
+                    (index) => NavigationRailDestination(
+                      icon: Icon(_menuIcons[index]),
+                      label: Text(_menuTitles[index]),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            destinations: List.generate(
-              _menuTitles.length,
-              (index) => NavigationRailDestination(
-                icon: Icon(_menuIcons[index]),
-                label: Text(_menuTitles[index]),
               ),
             ),
           ),
@@ -130,21 +188,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 0:
         return _buildDashboardView();
       case 1:
-        return _buildPlaceholder('Products', Icons.inventory);
+        return const ProductsScreen();
       case 2:
-        return _buildPlaceholder('Suppliers', Icons.local_shipping);
+        return const SuppliersScreen();
       case 3:
-        return _buildPlaceholder('Customers', Icons.people);
+        return const CustomersScreen();
       case 4:
-        return _buildPlaceholder('Transactions', Icons.receipt_long);
+        return const TransactionsScreen();
       case 5:
-        return _buildPlaceholder('Held Bills', Icons.pause_circle_outline);
+        return const HeldBillsScreen();
       case 6:
         return _buildPlaceholder('Reports', Icons.analytics);
       case 7:
-        return _buildPlaceholder('Users', Icons.group);
+        return const UsersScreen();
       case 8:
-        return _buildPlaceholder('Settings', Icons.settings);
+        return const SettingsScreen();
       default:
         return _buildDashboardView();
     }
@@ -155,13 +213,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              // Refresh dashboard data
-              setState(() {});
-            },
-          ),
+          if (_isLoadingKPIs)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadDashboardData,
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -188,27 +255,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildKPICard(
                   'Today\'s Sales',
-                  '0',
+                  _todaysSales != null
+                      ? '\$${(_todaysSales!['total_sales'] as num).toStringAsFixed(2)}'
+                      : '...',
                   Icons.shopping_cart,
                   Colors.green,
+                  subtitle: _todaysSales != null
+                      ? '${_todaysSales!['transaction_count']} transactions'
+                      : null,
                 ),
                 _buildKPICard(
                   'Today\'s Purchases',
-                  '0',
+                  _todaysPurchases != null
+                      ? '\$${(_todaysPurchases!['total_purchases'] as num).toStringAsFixed(2)}'
+                      : '...',
                   Icons.add_shopping_cart,
                   Colors.blue,
+                  subtitle: _todaysPurchases != null
+                      ? '${_todaysPurchases!['transaction_count']} orders'
+                      : null,
                 ),
                 _buildKPICard(
                   'Low Stock Items',
-                  '0',
+                  _lowStockCount.toString(),
                   Icons.warning_amber,
                   Colors.orange,
+                  subtitle: 'Needs reorder',
                 ),
                 _buildKPICard(
                   'Total Products',
-                  '0',
+                  _totalProducts.toString(),
                   Icons.inventory_2,
                   Colors.purple,
+                  subtitle: 'In catalog',
                 ),
               ],
             ),
@@ -288,7 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildKPICard(String title, String value, IconData icon, Color color) {
+  Widget _buildKPICard(String title, String value, IconData icon, Color color, {String? subtitle}) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -303,10 +382,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.arrow_upward, color: color, size: 16),
+                  child: Icon(Icons.trending_up, color: color, size: 16),
                 ),
               ],
             ),
@@ -319,6 +398,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -328,6 +409,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontSize: 12,
                   ),
                 ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 10,
+                    ),
+                  ),
               ],
             ),
           ],
