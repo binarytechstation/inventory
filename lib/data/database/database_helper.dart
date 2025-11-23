@@ -74,16 +74,30 @@ class DatabaseHelper {
     // Handle database upgrades here
     if (oldVersion < 2) {
       // Migration from version 1 to 2
-      // Add profile_picture_path column to users table
-      await db.execute('ALTER TABLE users ADD COLUMN profile_picture_path TEXT');
 
-      // Check if held_bill_items table exists, if not create it
-      final tables = await db.rawQuery(
+      // Check if profile_picture_path column exists
+      final userColumns = await db.rawQuery('PRAGMA table_info(users)');
+      final hasProfilePicture = userColumns.any((col) => col['name'] == 'profile_picture_path');
+
+      if (!hasProfilePicture) {
+        await db.execute('ALTER TABLE users ADD COLUMN profile_picture_path TEXT');
+      }
+
+      // Check if held_bills table exists
+      final heldBillsExists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='held_bills'"
+      );
+
+      if (heldBillsExists.isEmpty) {
+        await db.execute(DatabaseSchema.createHeldBillsTable);
+      }
+
+      // Check if held_bill_items table exists
+      final heldBillItemsExists = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='held_bill_items'"
       );
 
-      if (tables.isEmpty) {
-        await db.execute(DatabaseSchema.createHeldBillsTable);
+      if (heldBillItemsExists.isEmpty) {
         await db.execute(DatabaseSchema.createHeldBillLinesTable);
       }
     }
