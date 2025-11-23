@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -72,8 +72,20 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Handle database upgrades here
-    if (oldVersion < newVersion) {
-      // Add migration logic when schema changes
+    if (oldVersion < 2) {
+      // Migration from version 1 to 2
+      // Add profile_picture_path column to users table
+      await db.execute('ALTER TABLE users ADD COLUMN profile_picture_path TEXT');
+
+      // Check if held_bill_items table exists, if not create it
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='held_bill_items'"
+      );
+
+      if (tables.isEmpty) {
+        await db.execute(DatabaseSchema.createHeldBillsTable);
+        await db.execute(DatabaseSchema.createHeldBillLinesTable);
+      }
     }
   }
 

@@ -11,7 +11,8 @@
       "Bash(dart run:*)",
       "Bash(test:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Complete inventory management system with POS and reporting\n\n- Add UserService with BCrypt password hashing\n- Add ReportsService with 8+ comprehensive report types\n- Add AuditService for complete audit trail logging\n- Add BackupService for database backup/restore\n- Create full-featured POS screen with cart, payments, discounts\n- Create Reports dashboard with date filtering and export placeholders\n- Integrate all screens into Dashboard navigation\n- Add ''New Sale'' quick action button to dashboard\n- Skip license activation for development (direct to login)\n\nAll core CRUD operations are now functional:\n- Products, Suppliers, Customers, Users\n- Sales/Purchase transactions\n- Inventory tracking\n- Business intelligence reports\n- User audit logging\n- Database backup/restore\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

@@ -175,6 +175,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showClearDataDialog(),
             trailing: const Icon(Icons.warning, color: Colors.red),
           ),
+          _buildSettingsTile(
+            icon: Icons.refresh,
+            title: 'Reset Database',
+            subtitle: 'Delete and recreate database with fresh schema',
+            onTap: () => _showResetDatabaseDialog(),
+            trailing: const Icon(Icons.warning, color: Colors.orange),
+          ),
 
           // Security
           _buildSectionTitle('Security'),
@@ -707,6 +714,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to clear data: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showResetDatabaseDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Database'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'WARNING: This will DELETE the entire database and recreate it!',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+            ),
+            SizedBox(height: 16),
+            Text('This will:'),
+            Text('• Delete ALL data permanently'),
+            Text('• Recreate database with latest schema'),
+            Text('• Reset to default admin account'),
+            Text('• Fix any schema issues'),
+            SizedBox(height: 16),
+            Text(
+              'The app will restart after reset.',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('RESET DATABASE'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _performDatabaseReset();
+    }
+  }
+
+  Future<void> _performDatabaseReset() async {
+    try {
+      // Show loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Resetting database...'),
+            ],
+          ),
+        ),
+      );
+
+      // Delete the database
+      await _dbHelper.deleteDatabase();
+
+      // Close loading
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      // Show success and exit
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Database Reset Complete'),
+          content: const Text(
+            'Database has been reset successfully!\n\nThe application will now restart.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                // Exit the app
+                exit(0);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Close loading
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      // Show error
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to reset database: $e'),
           backgroundColor: Colors.red,
         ),
       );
