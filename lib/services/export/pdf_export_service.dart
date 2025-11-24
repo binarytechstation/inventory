@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 // Temporarily disabled due to Windows build issues with pdfium download
-// import 'package:printing/printing.dart';
+import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 
@@ -19,7 +19,8 @@ class PdfExportService {
 
     // Get logo if enabled
     pw.ImageProvider? logo;
-    if ((headerSettings['show_company_logo'] as int?) == 1 && headerSettings['logo_path'] != null) {
+    if ((headerSettings['show_company_logo'] as int?) == 1 &&
+        headerSettings['logo_path'] != null) {
       try {
         final logoFile = File(headerSettings['logo_path'] as String);
         if (await logoFile.exists()) {
@@ -97,20 +98,50 @@ class PdfExportService {
           pw.SizedBox(height: 10),
 
           // Date Range
-          pw.Text('Period: ${_formatDate(startDate)} to ${_formatDate(endDate)}'),
+          pw.Text(
+            'Period: ${_formatDate(startDate)} to ${_formatDate(endDate)}',
+          ),
           pw.SizedBox(height: 20),
 
           // Summary Table
           pw.Table(
             border: pw.TableBorder.all(),
             children: [
-              _buildPdfRow('Total Transactions', data['total_transactions'].toString(), isHeader: false),
-              _buildPdfRow('Unique Customers', data['unique_customers'].toString(), isHeader: false),
-              _buildPdfRow('Subtotal', '\$${(data['subtotal'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Total Discount', '\$${(data['total_discount'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Total Tax', '\$${(data['total_tax'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Total Sales', '\$${(data['total_sales'] as num).toStringAsFixed(2)}', isHeader: true),
-              _buildPdfRow('Average Sale', '\$${(data['average_sale'] as num).toStringAsFixed(2)}', isHeader: false),
+              _buildPdfRow(
+                'Total Transactions',
+                data['total_transactions'].toString(),
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Unique Customers',
+                data['unique_customers'].toString(),
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Subtotal',
+                '\$${(data['subtotal'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Total Discount',
+                '\$${(data['total_discount'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Total Tax',
+                '\$${(data['total_tax'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Total Sales',
+                '\$${(data['total_sales'] as num).toStringAsFixed(2)}',
+                isHeader: true,
+              ),
+              _buildPdfRow(
+                'Average Sale',
+                '\$${(data['average_sale'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
             ],
           ),
         ],
@@ -121,7 +152,9 @@ class PdfExportService {
   }
 
   /// Generate inventory report PDF
-  Future<File> generateInventoryReportPdf(List<Map<String, dynamic>> data) async {
+  Future<File> generateInventoryReportPdf(
+    List<Map<String, dynamic>> data,
+  ) async {
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -141,12 +174,17 @@ class PdfExportService {
           // Products Table
           pw.Table.fromTextArray(
             headers: ['Product', 'SKU', 'Stock', 'Value'],
-            data: data.map((item) => [
-              item['name'] ?? '',
-              item['sku'] ?? '',
-              ((item['current_stock'] as num?)?.toDouble() ?? 0).toStringAsFixed(1),
-              '\$${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-            ]).toList(),
+            data: data
+                .map(
+                  (item) => [
+                    item['name'] ?? '',
+                    item['sku'] ?? '',
+                    ((item['current_stock'] as num?)?.toDouble() ?? 0)
+                        .toStringAsFixed(1),
+                    '\$${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                  ],
+                )
+                .toList(),
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
             cellAlignment: pw.Alignment.centerLeft,
@@ -181,19 +219,45 @@ class PdfExportService {
           pw.SizedBox(height: 10),
 
           // Date Range
-          pw.Text('Period: ${_formatDate(startDate)} to ${_formatDate(endDate)}'),
+          pw.Text(
+            'Period: ${_formatDate(startDate)} to ${_formatDate(endDate)}',
+          ),
           pw.SizedBox(height: 20),
 
           // P&L Table
           pw.Table(
             border: pw.TableBorder.all(),
             children: [
-              _buildPdfRow('Total Revenue', '\$${(data['total_revenue'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Cost of Goods Sold', '\$${(data['total_cogs'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Gross Profit', '\$${(data['gross_profit'] as num).toStringAsFixed(2)}', isHeader: true),
-              _buildPdfRow('Discounts Given', '\$${(data['total_discounts'] as num).toStringAsFixed(2)}', isHeader: false),
-              _buildPdfRow('Net Profit', '\$${(data['net_profit'] as num).toStringAsFixed(2)}', isHeader: true),
-              _buildPdfRow('Profit Margin', '${(data['profit_margin_percentage'] as num).toStringAsFixed(2)}%', isHeader: false),
+              _buildPdfRow(
+                'Total Revenue',
+                '\$${(data['total_revenue'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Cost of Goods Sold',
+                '\$${(data['total_cogs'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Gross Profit',
+                '\$${(data['gross_profit'] as num).toStringAsFixed(2)}',
+                isHeader: true,
+              ),
+              _buildPdfRow(
+                'Discounts Given',
+                '\$${(data['total_discounts'] as num).toStringAsFixed(2)}',
+                isHeader: false,
+              ),
+              _buildPdfRow(
+                'Net Profit',
+                '\$${(data['net_profit'] as num).toStringAsFixed(2)}',
+                isHeader: true,
+              ),
+              _buildPdfRow(
+                'Profit Margin',
+                '${(data['profit_margin_percentage'] as num).toStringAsFixed(2)}%',
+                isHeader: false,
+              ),
             ],
           ),
         ],
@@ -204,7 +268,10 @@ class PdfExportService {
   }
 
   // Helper: Build PDF Header
-  pw.Widget _buildHeader(Map<String, dynamic> settings, pw.ImageProvider? logo) {
+  pw.Widget _buildHeader(
+    Map<String, dynamic> settings,
+    pw.ImageProvider? logo,
+  ) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -212,8 +279,7 @@ class PdfExportService {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            if (logo != null)
-              pw.Image(logo, width: 100, height: 50),
+            if (logo != null) pw.Image(logo, width: 100, height: 50),
             pw.Text(
               settings['company_name'] as String? ?? 'Company Name',
               style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
@@ -242,7 +308,10 @@ class PdfExportService {
   }
 
   // Helper: Build Invoice Details
-  pw.Widget _buildInvoiceDetails(Map<String, dynamic> transaction, Map<String, dynamic> settings) {
+  pw.Widget _buildInvoiceDetails(
+    Map<String, dynamic> transaction,
+    Map<String, dynamic> settings,
+  ) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
@@ -250,7 +319,9 @@ class PdfExportService {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text('Invoice No: ${transaction['invoice_number'] ?? 'N/A'}'),
-            pw.Text('Date: ${_formatDate(DateTime.tryParse(transaction['transaction_date'] ?? '') ?? DateTime.now())}'),
+            pw.Text(
+              'Date: ${_formatDate(DateTime.tryParse(transaction['transaction_date'] ?? '') ?? DateTime.now())}',
+            ),
           ],
         ),
       ],
@@ -258,12 +329,13 @@ class PdfExportService {
   }
 
   // Helper: Build Party Details
-  pw.Widget _buildPartyDetails(Map<String, dynamic> transaction, Map<String, dynamic> settings) {
+  pw.Widget _buildPartyDetails(
+    Map<String, dynamic> transaction,
+    Map<String, dynamic> settings,
+  ) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(),
-      ),
+      decoration: pw.BoxDecoration(border: pw.Border.all()),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -278,17 +350,24 @@ class PdfExportService {
   }
 
   // Helper: Build Items Table
-  pw.Widget _buildItemsTable(Map<String, dynamic> transaction, Map<String, dynamic> settings) {
+  pw.Widget _buildItemsTable(
+    Map<String, dynamic> transaction,
+    Map<String, dynamic> settings,
+  ) {
     final items = transaction['items'] as List<Map<String, dynamic>>? ?? [];
 
     return pw.Table.fromTextArray(
       headers: ['Item', 'Qty', 'Price', 'Amount'],
-      data: items.map((item) => [
-        item['product_name'] ?? '',
-        (item['quantity'] ?? 0).toString(),
-        '\$${(item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-        '\$${(item['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-      ]).toList(),
+      data: items
+          .map(
+            (item) => [
+              item['product_name'] ?? '',
+              (item['quantity'] ?? 0).toString(),
+              '\$${(item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              '\$${(item['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+            ],
+          )
+          .toList(),
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
       cellAlignment: pw.Alignment.centerLeft,
@@ -296,7 +375,10 @@ class PdfExportService {
   }
 
   // Helper: Build Totals
-  pw.Widget _buildTotals(Map<String, dynamic> transaction, Map<String, dynamic> settings) {
+  pw.Widget _buildTotals(
+    Map<String, dynamic> transaction,
+    Map<String, dynamic> settings,
+  ) {
     return pw.Container(
       alignment: pw.Alignment.centerRight,
       child: pw.Container(
@@ -304,14 +386,21 @@ class PdfExportService {
         child: pw.Column(
           children: [
             if ((settings['show_subtotal'] as int?) == 1)
-              _buildTotalRow(settings['subtotal_label'] as String? ?? 'Subtotal',
-                '\$${(transaction['subtotal'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
-            if ((settings['show_discount_total'] as int?) == 1 && (transaction['discount_amount'] as num? ?? 0) > 0)
-              _buildTotalRow(settings['discount_label'] as String? ?? 'Discount',
-                '\$${(transaction['discount_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+              _buildTotalRow(
+                settings['subtotal_label'] as String? ?? 'Subtotal',
+                '\$${(transaction['subtotal'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              ),
+            if ((settings['show_discount_total'] as int?) == 1 &&
+                (transaction['discount_amount'] as num? ?? 0) > 0)
+              _buildTotalRow(
+                settings['discount_label'] as String? ?? 'Discount',
+                '\$${(transaction['discount_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              ),
             if ((settings['show_tax_total'] as int?) == 1)
-              _buildTotalRow(settings['tax_label'] as String? ?? 'Tax',
-                '\$${(transaction['tax_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+              _buildTotalRow(
+                settings['tax_label'] as String? ?? 'Tax',
+                '\$${(transaction['tax_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              ),
             pw.Divider(),
             _buildTotalRow(
               settings['grand_total_label'] as String? ?? 'Grand Total',
@@ -329,8 +418,14 @@ class PdfExportService {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(label, style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null),
-        pw.Text(value, style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null),
+        pw.Text(
+          label,
+          style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+        ),
+        pw.Text(
+          value,
+          style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+        ),
       ],
     );
   }
@@ -344,7 +439,10 @@ class PdfExportService {
           pw.Text(settings['footer_text'] as String? ?? ''),
         if ((settings['show_terms_and_conditions'] as int?) == 1) ...[
           pw.SizedBox(height: 10),
-          pw.Text('Terms & Conditions:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+            'Terms & Conditions:',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
           pw.Text(settings['terms_and_conditions'] as String? ?? ''),
         ],
       ],
@@ -352,17 +450,33 @@ class PdfExportService {
   }
 
   // Helper: Build PDF Row
-  pw.TableRow _buildPdfRow(String label, String value, {bool isHeader = false}) {
+  pw.TableRow _buildPdfRow(
+    String label,
+    String value, {
+    bool isHeader = false,
+  }) {
     return pw.TableRow(
-      decoration: isHeader ? const pw.BoxDecoration(color: PdfColors.grey200) : null,
+      decoration: isHeader
+          ? const pw.BoxDecoration(color: PdfColors.grey200)
+          : null,
       children: [
         pw.Padding(
           padding: const pw.EdgeInsets.all(8),
-          child: pw.Text(label, style: isHeader ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null),
+          child: pw.Text(
+            label,
+            style: isHeader
+                ? pw.TextStyle(fontWeight: pw.FontWeight.bold)
+                : null,
+          ),
         ),
         pw.Padding(
           padding: const pw.EdgeInsets.all(8),
-          child: pw.Text(value, style: isHeader ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null),
+          child: pw.Text(
+            value,
+            style: isHeader
+                ? pw.TextStyle(fontWeight: pw.FontWeight.bold)
+                : null,
+          ),
         ),
       ],
     );
@@ -415,4 +529,17 @@ class PdfExportService {
   //     onLayout: (format) async => pdf.save(),
   //   );
   // }
+
+  Future<void> previewPdf(pw.Document pdf) async {
+    try {
+      // Initialize printing (fixes Windows pdfium download issues)
+      await Printing.info();
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+      );
+    } catch (e) {
+      print("PDF preview failed: $e");
+    }
+  }
 }

@@ -35,7 +35,7 @@ dependencies:
   # PDF Generation and Printing
   pdf: ^3.11.1
   # Temporarily disabled due to Windows build issues with pdfium download
-  # printing: ^5.13.2
+  printing: ^5.13.2
 
   # File Picker for backup/restore
   file_picker: ^8.1.4
