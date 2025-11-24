@@ -158,36 +158,37 @@ class _BodySettingsTabState extends State<BodySettingsTab> {
           _showItemTax = (settings['show_tax_column'] as int? ?? 1) == 1;
           _showAmount = (settings['show_amount_column'] as int? ?? 1) == 1;
           _showItemImage = (settings['show_item_image'] as int? ?? 0) == 1;
-          _tableHeaderJsonController.text = settings['table_header_json'] as String? ?? '';
+          _tableHeaderJsonController.text = settings['item_table_headers'] as String? ?? '';
 
           // Styling
-          final borderStyleValue = settings['border_style'] as String? ?? 'SOLID';
+          final borderStyleValue = settings['table_border_style'] as String? ?? 'SOLID';
           _borderStyle = ['SOLID', 'DASHED', 'DOTTED', 'NONE'].contains(borderStyleValue) ? borderStyleValue : 'SOLID';
-          _borderColorController.text = settings['border_color'] as String? ?? '#000000';
-          _headerBgColorController.text = settings['header_bg_color'] as String? ?? '#f0f0f0';
-          _rowAltColorController.text = settings['row_alternate_color'] as String? ?? '#ffffff';
+          _borderColorController.text = settings['table_border_color'] as String? ?? '#000000';
+          _headerBgColorController.text = settings['table_header_bg_color'] as String? ?? '#f0f0f0';
+          _rowAltColorController.text = settings['table_row_alternate_color'] as String? ?? '#ffffff';
 
           // Totals
           _showSubtotal = (settings['show_subtotal'] as int? ?? 1) == 1;
-          _showDiscountTotal = (settings['show_discount_total'] as int? ?? 1) == 1;
-          _showTaxTotal = (settings['show_tax_total'] as int? ?? 1) == 1;
-          _showShipping = (settings['show_shipping'] as int? ?? 0) == 1;
+          _showDiscountTotal = (settings['show_total_discount'] as int? ?? 1) == 1;
+          _showTaxTotal = (settings['show_total_tax'] as int? ?? 1) == 1;
+          _showShipping = (settings['show_shipping_charges'] as int? ?? 0) == 1;
           _showOtherCharges = (settings['show_other_charges'] as int? ?? 0) == 1;
           _showGrandTotal = (settings['show_grand_total'] as int? ?? 1) == 1;
 
-          _subtotalLabelController.text = settings['subtotal_label'] as String? ?? 'Subtotal';
-          _discountLabelController.text = settings['discount_label'] as String? ?? 'Discount';
-          _taxLabelController.text = settings['tax_label'] as String? ?? 'Tax';
-          _shippingLabelController.text = settings['shipping_label'] as String? ?? 'Shipping';
+          // Use default values for non-editable labels
+          _subtotalLabelController.text = 'Subtotal';
+          _discountLabelController.text = 'Discount';
+          _taxLabelController.text = 'Tax';
+          _shippingLabelController.text = settings['shipping_charges_label'] as String? ?? 'Shipping';
           _otherChargesLabelController.text = settings['other_charges_label'] as String? ?? 'Other Charges';
           _grandTotalLabelController.text = settings['grand_total_label'] as String? ?? 'Grand Total';
           _grandTotalFontSizeController.text = (settings['grand_total_font_size'] as int? ?? 14).toString();
 
           // Additional Features
           _showQrCode = (settings['show_qr_code'] as int? ?? 0) == 1;
-          _qrContentController.text = settings['qr_content_template'] as String? ?? '{invoice_number}';
-          _qrSizeController.text = (settings['qr_size'] as int? ?? 100).toString();
-          final qrPosValue = settings['qr_position'] as String? ?? 'BOTTOM_RIGHT';
+          _qrContentController.text = settings['qr_code_content'] as String? ?? '{invoice_number}';
+          _qrSizeController.text = (settings['qr_code_size'] as int? ?? 100).toString();
+          final qrPosValue = settings['qr_code_position'] as String? ?? 'BOTTOM_RIGHT';
           _qrPosition = ['TOP_LEFT', 'TOP_RIGHT', 'BOTTOM_LEFT', 'BOTTOM_RIGHT'].contains(qrPosValue) ? qrPosValue : 'BOTTOM_RIGHT';
           _showAmountInWords = (settings['show_amount_in_words'] as int? ?? 1) == 1;
           final colorThemeValue = settings['color_theme'] as String? ?? 'BLUE';
@@ -231,31 +232,28 @@ class _BodySettingsTabState extends State<BodySettingsTab> {
         'show_tax_column': _showItemTax ? 1 : 0,
         'show_amount_column': _showAmount ? 1 : 0,
         'show_item_image': _showItemImage ? 1 : 0,
-        'table_header_json': _tableHeaderJsonController.text.trim(),
+        'item_table_headers': _tableHeaderJsonController.text.trim(),
         // Styling
-        'border_style': _borderStyle,
-        'border_color': _borderColorController.text.trim(),
-        'header_bg_color': _headerBgColorController.text.trim(),
-        'row_alternate_color': _rowAltColorController.text.trim(),
+        'table_border_style': _borderStyle,
+        'table_border_color': _borderColorController.text.trim(),
+        'table_header_bg_color': _headerBgColorController.text.trim(),
+        'table_row_alternate_color': _rowAltColorController.text.trim(),
         // Totals
         'show_subtotal': _showSubtotal ? 1 : 0,
-        'show_discount_total': _showDiscountTotal ? 1 : 0,
-        'show_tax_total': _showTaxTotal ? 1 : 0,
-        'show_shipping': _showShipping ? 1 : 0,
+        'show_total_discount': _showDiscountTotal ? 1 : 0,
+        'show_total_tax': _showTaxTotal ? 1 : 0,
+        'show_shipping_charges': _showShipping ? 1 : 0,
+        'shipping_charges_label': _shippingLabelController.text.trim(),
         'show_other_charges': _showOtherCharges ? 1 : 0,
-        'show_grand_total': _showGrandTotal ? 1 : 0,
-        'subtotal_label': _subtotalLabelController.text.trim(),
-        'discount_label': _discountLabelController.text.trim(),
-        'tax_label': _taxLabelController.text.trim(),
-        'shipping_label': _shippingLabelController.text.trim(),
         'other_charges_label': _otherChargesLabelController.text.trim(),
+        'show_grand_total': _showGrandTotal ? 1 : 0,
         'grand_total_label': _grandTotalLabelController.text.trim(),
         'grand_total_font_size': int.parse(_grandTotalFontSizeController.text),
         // Additional Features
         'show_qr_code': _showQrCode ? 1 : 0,
-        'qr_content_template': _qrContentController.text.trim(),
-        'qr_size': int.parse(_qrSizeController.text),
-        'qr_position': _qrPosition,
+        'qr_code_content': _qrContentController.text.trim(),
+        'qr_code_size': int.parse(_qrSizeController.text),
+        'qr_code_position': _qrPosition,
         'show_amount_in_words': _showAmountInWords ? 1 : 0,
         'color_theme': _colorTheme,
       });
