@@ -13,6 +13,7 @@ import 'business_info_screen.dart';
 import 'activity_log_screen.dart';
 import 'invoice_settings_main_screen.dart';
 import 'invoice_activity_log_screen.dart';
+import 'advanced_invoice_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -145,11 +146,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _buildSettingsTile(
             icon: Icons.print,
-            title: 'Print Settings',
-            subtitle: 'Configure receipt and report printing',
+            title: 'Advanced Invoice Settings',
+            subtitle: 'Configure invoice body, print settings and test print',
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Feature coming soon')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdvancedInvoiceSettingsScreen()),
               );
             },
           ),
