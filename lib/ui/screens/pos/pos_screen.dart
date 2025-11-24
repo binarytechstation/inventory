@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/customer/customer_service.dart';
 import '../../../services/transaction/transaction_service.dart';
+import '../../../services/invoice/invoice_service.dart';
 import '../../../data/models/product_model.dart';
 import '../../../data/models/customer_model.dart';
 
@@ -17,6 +19,7 @@ class _POSScreenState extends State<POSScreen> {
   final ProductService _productService = ProductService();
   final CustomerService _customerService = CustomerService();
   final TransactionService _transactionService = TransactionService();
+  final InvoiceService _invoiceService = InvoiceService();
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
@@ -196,7 +199,7 @@ class _POSScreenState extends State<POSScreen> {
         };
       }).toList();
 
-      await _transactionService.createTransaction(
+      final transactionId = await _transactionService.createTransaction(
         type: 'SELL',
         date: DateTime.now(),
         partyId: _selectedCustomer!.id!,
@@ -211,19 +214,162 @@ class _POSScreenState extends State<POSScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sale completed successfully')),
-        );
+        setState(() => _isLoading = false);
+
+        // Show success dialog with invoice options
+        await _showInvoiceOptionsDialog(transactionId);
+
         _clearCart();
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error completing sale: $e')),
         );
       }
-    } finally {
-      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showInvoiceOptionsDialog(int transactionId) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 32),
+            const SizedBox(width: 12),
+            const Text('Sale Completed!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The sale has been completed successfully.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Would you like to generate an invoice?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Skip'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _downloadInvoice(transactionId);
+            },
+            icon: const Icon(Icons.download),
+            label: const Text('Download PDF'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _generateAndOpenInvoice(transactionId);
+            },
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text('View Invoice'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadInvoice(int transactionId) async {
+    try {
+      final pdfPath = await _invoiceService.generateInvoicePDF(
+        transactionId: transactionId,
+        saveToFile: true,
+      );
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Invoice Saved'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Invoice has been saved to:'),
+                const SizedBox(height: 8),
+                SelectableText(
+                  pdfPath,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _openPDFFile(pdfPath);
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating invoice: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateAndOpenInvoice(int transactionId) async {
+    try {
+      final pdfPath = await _invoiceService.generateInvoicePDF(
+        transactionId: transactionId,
+        saveToFile: true,
+      );
+
+      await _openPDFFile(pdfPath);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating invoice: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openPDFFile(String path) async {
+    try {
+      // Open the PDF file with the default PDF viewer
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', path]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [path]);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening PDF: $e')),
+        );
+      }
     }
   }
 

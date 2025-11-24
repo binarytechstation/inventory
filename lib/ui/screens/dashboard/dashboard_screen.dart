@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../supplier/suppliers_screen.dart';
 import '../customer/customers_screen.dart';
@@ -32,6 +35,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _totalProducts = 0;
   bool _isLoadingKPIs = false;
 
+  // Auto-refresh timer
+  Timer? _refreshTimer;
+  List<Map<String, dynamic>> _recentTransactions = [];
+  List<FlSpot> _salesChartData = [];
+
   final List<String> _menuTitles = [
     'Dashboard',
     'Products',
@@ -60,6 +68,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    // Set up auto-refresh every 30 seconds when on dashboard
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_selectedIndex == 0 && mounted) {
+        _loadDashboardData();
+      }
+    });
   }
 
   Future<void> _loadDashboardData() async {
@@ -69,12 +94,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final purchases = await _transactionService.getTodaysPurchases();
       final lowStock = await _productService.getLowStockProducts();
       final productCount = await _productService.getProductCount();
+      final recentTransactions = await _transactionService.getTransactions(
+        sortBy: 'created_at',
+        sortOrder: 'DESC',
+      );
+
+      // Get sales data for the last 7 days for chart
+      final salesChartData = await _getLast7DaysSales();
 
       setState(() {
         _todaysSales = sales;
         _todaysPurchases = purchases;
         _lowStockCount = lowStock.length;
         _totalProducts = productCount;
+        _recentTransactions = recentTransactions.take(5).toList();
+        _salesChartData = salesChartData;
         _isLoadingKPIs = false;
       });
     } catch (e) {
@@ -85,6 +119,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     }
+  }
+
+  Future<List<FlSpot>> _getLast7DaysSales() async {
+    final List<FlSpot> spots = [];
+    final now = DateTime.now();
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final startOfDay = DateTime(date.year, date.month, date.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final transactions = await _transactionService.getTransactions(
+        type: 'SELL',
+        startDate: startOfDay,
+        endDate: endOfDay,
+      );
+
+      double total = 0;
+      for (var transaction in transactions) {
+        total += (transaction['total_amount'] as num).toDouble();
+      }
+
+      spots.add(FlSpot((6 - i).toDouble(), total));
+    }
+
+    return spots;
   }
 
   @override
@@ -357,27 +417,180 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 32),
-            const Text(
-              'Recent Activity',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const ListTile(
-                      leading: Icon(Icons.info_outline),
-                      title: Text('No recent activity'),
-                      subtitle: Text('Start by creating your first transaction'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Sales Chart
+                Expanded(
+                  flex: 2,
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Sales Trend (Last 7 Days)',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 200,
+                            child: _salesChartData.isEmpty
+                                ? const Center(child: Text('No sales data available'))
+                                : LineChart(
+                                    LineChartData(
+                                      gridData: FlGridData(
+                                        show: true,
+                                        drawVerticalLine: true,
+                                        horizontalInterval: 1,
+                                        verticalInterval: 1,
+                                      ),
+                                      titlesData: FlTitlesData(
+                                        leftTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            reservedSize: 40,
+                                            getTitlesWidget: (value, meta) {
+                                              return Text(
+                                                '\$${value.toInt()}',
+                                                style: const TextStyle(fontSize: 10),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        bottomTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            getTitlesWidget: (value, meta) {
+                                              final date = DateTime.now().subtract(Duration(days: 6 - value.toInt()));
+                                              return Padding(
+                                                padding: const EdgeInsets.only(top: 8.0),
+                                                child: Text(
+                                                  DateFormat('dd/MM').format(date),
+                                                  style: const TextStyle(fontSize: 10),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        rightTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                        topTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                      ),
+                                      borderData: FlBorderData(
+                                        show: true,
+                                        border: Border.all(color: Colors.grey[300]!),
+                                      ),
+                                      lineBarsData: [
+                                        LineChartBarData(
+                                          spots: _salesChartData,
+                                          isCurved: true,
+                                          color: Colors.green,
+                                          barWidth: 3,
+                                          isStrokeCapRound: true,
+                                          dotData: const FlDotData(show: true),
+                                          belowBarData: BarAreaData(
+                                            show: true,
+                                            color: Colors.green.withValues(alpha: 0.1),
+                                          ),
+                                        ),
+                                      ],
+                                      minY: 0,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 16),
+                // Recent Transactions
+                Expanded(
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Recent Transactions',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 200,
+                            child: _recentTransactions.isEmpty
+                                ? const Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.receipt_long, size: 48, color: Colors.grey),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'No transactions yet',
+                                          style: TextStyle(color: Colors.grey),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: _recentTransactions.length,
+                                    separatorBuilder: (context, index) => const Divider(),
+                                    itemBuilder: (context, index) {
+                                      final transaction = _recentTransactions[index];
+                                      final type = transaction['transaction_type'] as String;
+                                      final invoiceNumber = transaction['invoice_number'] as String;
+                                      final total = (transaction['total_amount'] as num).toDouble();
+
+                                      return ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: CircleAvatar(
+                                          radius: 16,
+                                          backgroundColor: type == 'SELL' ? Colors.green : Colors.blue,
+                                          child: Icon(
+                                            type == 'SELL' ? Icons.arrow_upward : Icons.arrow_downward,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        title: Text(
+                                          invoiceNumber,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        subtitle: Text(
+                                          transaction['party_name'] ?? 'N/A',
+                                          style: const TextStyle(fontSize: 10),
+                                        ),
+                                        trailing: Text(
+                                          '\$${total.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: type == 'SELL' ? Colors.green : Colors.blue,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
