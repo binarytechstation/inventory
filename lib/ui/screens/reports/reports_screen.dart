@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/reports/reports_service.dart';
+import '../../../services/export/pdf_export_service.dart';
+import '../../../services/export/excel_export_service.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -10,6 +13,20 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   final ReportsService _reportsService = ReportsService();
+  final PdfExportService _pdfService = PdfExportService();
+  final ExcelExportService _excelService = ExcelExportService();
+
+  // Store current report data for export
+  Map<String, dynamic>? _currentSalesData;
+  Map<String, dynamic>? _currentPurchaseData;
+  List<Map<String, dynamic>>? _currentInventoryData;
+  List<Map<String, dynamic>>? _currentProductPerformanceData;
+  List<Map<String, dynamic>>? _currentCustomerData;
+  List<Map<String, dynamic>>? _currentSupplierData;
+  Map<String, dynamic>? _currentProfitLossData;
+  List<Map<String, dynamic>>? _currentCategoryData;
+  DateTimeRange? _currentDateRange;
+  bool _isTopPerformers = true;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +283,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (!context.mounted) return;
       Navigator.pop(context); // Close loading dialog
 
+      // Store data for export
+      setState(() {
+        _currentSalesData = report;
+        _currentDateRange = dateRange;
+      });
+
       _showReportDialog(
         context,
         'Sales Summary Report',
@@ -315,6 +338,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (!context.mounted) return;
       Navigator.pop(context);
 
+      // Store data for export
+      setState(() {
+        _currentPurchaseData = report;
+        _currentDateRange = dateRange;
+      });
+
       _showReportDialog(
         context,
         'Purchase Summary Report',
@@ -356,6 +385,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       if (!context.mounted) return;
       Navigator.pop(context);
+
+      // Store data for export
+      setState(() {
+        _currentInventoryData = report;
+      });
 
       // Calculate totals
       double totalValue = 0;
@@ -404,6 +438,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (!context.mounted) return;
       Navigator.pop(context);
 
+      // Store data for export
+      setState(() {
+        _currentProductPerformanceData = topProducts;
+        _currentDateRange = dateRange;
+        _isTopPerformers = true;
+      });
+
       _showProductPerformanceDialog(context, topProducts, dateRange, true);
     } catch (e) {
       if (!context.mounted) return;
@@ -424,6 +465,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (!context.mounted) return;
       Navigator.pop(context);
 
+      // Store data for export
+      setState(() {
+        _currentCustomerData = report;
+      });
+
       _showCustomerReportDialog(context, report);
     } catch (e) {
       if (!context.mounted) return;
@@ -443,6 +489,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       if (!context.mounted) return;
       Navigator.pop(context);
+
+      // Store data for export
+      setState(() {
+        _currentSupplierData = report;
+      });
 
       _showSupplierReportDialog(context, report);
     } catch (e) {
@@ -470,6 +521,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       if (!context.mounted) return;
       Navigator.pop(context);
+
+      // Store data for export
+      setState(() {
+        _currentProfitLossData = report;
+        _currentDateRange = dateRange;
+      });
 
       final netProfit = (report['net_profit'] as num).toDouble();
       final isProfit = netProfit >= 0;
@@ -523,6 +580,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       if (!context.mounted) return;
       Navigator.pop(context);
+
+      // Store data for export
+      setState(() {
+        _currentCategoryData = report;
+        _currentDateRange = dateRange;
+      });
 
       _showCategoryReportDialog(context, report, dateRange);
     } catch (e) {
@@ -934,31 +997,142 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // Helper: Export to PDF
-  void _exportToPDF(String reportName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Exporting $reportName to PDF...'),
-        action: SnackBarAction(
-          label: 'OK',
-          onPressed: () {},
-        ),
-      ),
-    );
-    // TODO: Implement PDF export functionality
+  Future<void> _exportToPDF(String reportName) async {
+    try {
+      File? file;
+
+      if (reportName == 'Sales Summary' && _currentSalesData != null && _currentDateRange != null) {
+        file = await _pdfService.generateSalesReportPdf(
+          data: _currentSalesData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else if (reportName == 'Purchase Summary' && _currentPurchaseData != null && _currentDateRange != null) {
+        file = await _pdfService.generateSalesReportPdf(
+          data: _currentPurchaseData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else if (reportName == 'Inventory Report' && _currentInventoryData != null) {
+        file = await _pdfService.generateInventoryReportPdf(_currentInventoryData!);
+      } else if (reportName == 'Profit & Loss' && _currentProfitLossData != null && _currentDateRange != null) {
+        file = await _pdfService.generateProfitLossReportPdf(
+          data: _currentProfitLossData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please view the report first before exporting'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF exported successfully to:\n${file.path}'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Helper: Export to Excel
-  void _exportToExcel(String reportName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Exporting $reportName to Excel...'),
-        action: SnackBarAction(
-          label: 'OK',
-          onPressed: () {},
-        ),
-      ),
-    );
-    // TODO: Implement Excel export functionality
+  Future<void> _exportToExcel(String reportName) async {
+    try {
+      File? file;
+
+      if (reportName == 'Sales Summary' && _currentSalesData != null && _currentDateRange != null) {
+        file = await _excelService.exportSalesReport(
+          data: _currentSalesData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else if (reportName == 'Purchase Summary' && _currentPurchaseData != null && _currentDateRange != null) {
+        file = await _excelService.exportPurchasesReport(
+          data: _currentPurchaseData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else if (reportName == 'Inventory Report' && _currentInventoryData != null) {
+        file = await _excelService.exportInventoryReport(_currentInventoryData!);
+      } else if (reportName == 'Product Performance' && _currentProductPerformanceData != null && _currentDateRange != null) {
+        file = await _excelService.exportProductPerformanceReport(
+          data: _currentProductPerformanceData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+          topPerformers: _isTopPerformers,
+        );
+      } else if (reportName == 'Customer Report' && _currentCustomerData != null) {
+        file = await _excelService.exportCustomerReport(_currentCustomerData!);
+      } else if (reportName == 'Supplier Report' && _currentSupplierData != null) {
+        file = await _excelService.exportSupplierReport(_currentSupplierData!);
+      } else if (reportName == 'Profit & Loss' && _currentProfitLossData != null && _currentDateRange != null) {
+        file = await _excelService.exportProfitLossReport(
+          data: _currentProfitLossData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else if (reportName == 'Category Analysis' && _currentCategoryData != null && _currentDateRange != null) {
+        file = await _excelService.exportCategoryReport(
+          data: _currentCategoryData!,
+          startDate: _currentDateRange!.start,
+          endDate: _currentDateRange!.end,
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please view the report first before exporting'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Excel exported successfully to:\n${file.path}'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting Excel: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Helper: Format Date

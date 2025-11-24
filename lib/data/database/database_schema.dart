@@ -242,4 +242,266 @@ class DatabaseSchema {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   ''';
+
+  // Invoice settings table (general invoice configuration)
+  static const String createInvoiceSettingsTable = '''
+    CREATE TABLE invoice_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_type TEXT NOT NULL,
+      prefix TEXT NOT NULL,
+      starting_number INTEGER DEFAULT 1000,
+      current_number INTEGER DEFAULT 1000,
+      number_format TEXT DEFAULT 'PREFIX-NNNN',
+      enable_auto_increment INTEGER DEFAULT 1,
+      reset_period TEXT DEFAULT 'NEVER',
+      currency_code TEXT DEFAULT 'USD',
+      currency_symbol TEXT DEFAULT '\$',
+      default_tax_rate REAL DEFAULT 0,
+      enable_tax_by_default INTEGER DEFAULT 1,
+      enable_discount_by_default INTEGER DEFAULT 0,
+      decimal_places INTEGER DEFAULT 2,
+      date_format TEXT DEFAULT 'dd/MM/yyyy',
+      time_format TEXT DEFAULT 'HH:mm',
+      language TEXT DEFAULT 'en',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice header settings table
+  static const String createInvoiceHeaderSettingsTable = '''
+    CREATE TABLE invoice_header_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_type TEXT NOT NULL,
+      show_company_logo INTEGER DEFAULT 1,
+      logo_path TEXT,
+      logo_width INTEGER DEFAULT 150,
+      logo_height INTEGER DEFAULT 80,
+      logo_position TEXT DEFAULT 'LEFT',
+      company_name TEXT,
+      company_tagline TEXT,
+      show_company_address INTEGER DEFAULT 1,
+      company_address TEXT,
+      show_company_phone INTEGER DEFAULT 1,
+      company_phone TEXT,
+      show_company_email INTEGER DEFAULT 1,
+      company_email TEXT,
+      show_company_website INTEGER DEFAULT 0,
+      company_website TEXT,
+      show_tax_id INTEGER DEFAULT 1,
+      tax_id_label TEXT DEFAULT 'Tax ID',
+      tax_id TEXT,
+      show_registration_number INTEGER DEFAULT 0,
+      registration_number TEXT,
+      page_size TEXT DEFAULT 'A4',
+      page_orientation TEXT DEFAULT 'PORTRAIT',
+      header_alignment TEXT DEFAULT 'LEFT',
+      header_background_color TEXT,
+      header_text_color TEXT DEFAULT '#000000',
+      show_invoice_title INTEGER DEFAULT 1,
+      invoice_title TEXT DEFAULT 'INVOICE',
+      title_font_size INTEGER DEFAULT 24,
+      show_invoice_number INTEGER DEFAULT 1,
+      show_invoice_date INTEGER DEFAULT 1,
+      show_due_date INTEGER DEFAULT 1,
+      custom_field1_label TEXT,
+      custom_field1_value TEXT,
+      custom_field2_label TEXT,
+      custom_field2_value TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice footer settings table
+  static const String createInvoiceFooterSettingsTable = '''
+    CREATE TABLE invoice_footer_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_type TEXT NOT NULL,
+      show_footer_text INTEGER DEFAULT 1,
+      footer_text TEXT DEFAULT 'Thank you for your business!',
+      footer_font_size INTEGER DEFAULT 10,
+      footer_alignment TEXT DEFAULT 'CENTER',
+      show_terms_and_conditions INTEGER DEFAULT 1,
+      terms_and_conditions TEXT,
+      show_payment_instructions INTEGER DEFAULT 1,
+      payment_instructions TEXT,
+      show_bank_details INTEGER DEFAULT 0,
+      bank_name TEXT,
+      account_holder_name TEXT,
+      account_number TEXT,
+      swift_code TEXT,
+      iban TEXT,
+      show_signature INTEGER DEFAULT 1,
+      signature_label TEXT DEFAULT 'Authorized Signature',
+      signature_image_path TEXT,
+      signature_position TEXT DEFAULT 'RIGHT',
+      show_stamp INTEGER DEFAULT 0,
+      stamp_image_path TEXT,
+      stamp_position TEXT DEFAULT 'LEFT',
+      show_page_numbers INTEGER DEFAULT 1,
+      page_number_format TEXT DEFAULT 'Page {current} of {total}',
+      show_generated_info INTEGER DEFAULT 1,
+      generated_info_text TEXT DEFAULT 'Generated on {date} at {time}',
+      footer_background_color TEXT,
+      footer_text_color TEXT DEFAULT '#666666',
+      custom_footer_field1_label TEXT,
+      custom_footer_field1_value TEXT,
+      custom_footer_field2_label TEXT,
+      custom_footer_field2_value TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice body settings table
+  static const String createInvoiceBodySettingsTable = '''
+    CREATE TABLE invoice_body_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_type TEXT NOT NULL,
+      show_party_details INTEGER DEFAULT 1,
+      party_label TEXT DEFAULT 'Bill To',
+      show_party_name INTEGER DEFAULT 1,
+      show_party_company INTEGER DEFAULT 1,
+      show_party_address INTEGER DEFAULT 1,
+      show_party_phone INTEGER DEFAULT 1,
+      show_party_email INTEGER DEFAULT 1,
+      show_party_tax_id INTEGER DEFAULT 0,
+      show_item_image INTEGER DEFAULT 0,
+      show_item_code INTEGER DEFAULT 1,
+      show_item_description INTEGER DEFAULT 1,
+      show_hsn_code INTEGER DEFAULT 0,
+      show_unit_column INTEGER DEFAULT 1,
+      show_quantity_column INTEGER DEFAULT 1,
+      show_unit_price_column INTEGER DEFAULT 1,
+      show_discount_column INTEGER DEFAULT 1,
+      show_tax_column INTEGER DEFAULT 1,
+      show_amount_column INTEGER DEFAULT 1,
+      item_table_headers TEXT DEFAULT '["#","Item","Quantity","Unit Price","Amount"]',
+      table_border_style TEXT DEFAULT 'SOLID',
+      table_border_color TEXT DEFAULT '#CCCCCC',
+      table_header_bg_color TEXT DEFAULT '#F5F5F5',
+      table_row_alternate_color TEXT,
+      show_subtotal INTEGER DEFAULT 1,
+      show_total_discount INTEGER DEFAULT 1,
+      show_total_tax INTEGER DEFAULT 1,
+      show_shipping_charges INTEGER DEFAULT 0,
+      shipping_charges_label TEXT DEFAULT 'Shipping',
+      show_other_charges INTEGER DEFAULT 0,
+      other_charges_label TEXT DEFAULT 'Other Charges',
+      show_grand_total INTEGER DEFAULT 1,
+      grand_total_label TEXT DEFAULT 'Grand Total',
+      grand_total_font_size INTEGER DEFAULT 16,
+      show_amount_in_words INTEGER DEFAULT 1,
+      amount_in_words_label TEXT DEFAULT 'Amount in Words',
+      show_qr_code INTEGER DEFAULT 0,
+      qr_code_content TEXT DEFAULT '{invoice_number}',
+      qr_code_size INTEGER DEFAULT 100,
+      qr_code_position TEXT DEFAULT 'BOTTOM_RIGHT',
+      color_theme TEXT DEFAULT 'DEFAULT',
+      custom_body_field1_label TEXT,
+      custom_body_field2_label TEXT,
+      custom_body_field3_label TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice type settings table
+  static const String createInvoiceTypeSettingsTable = '''
+    CREATE TABLE invoice_type_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type_code TEXT UNIQUE NOT NULL,
+      type_name TEXT NOT NULL,
+      description TEXT,
+      prefix TEXT NOT NULL,
+      title TEXT NOT NULL,
+      enable_party_selection INTEGER DEFAULT 1,
+      party_label TEXT,
+      enable_items INTEGER DEFAULT 1,
+      enable_tax_calculation INTEGER DEFAULT 1,
+      enable_discount INTEGER DEFAULT 1,
+      enable_payment_mode INTEGER DEFAULT 1,
+      enable_notes INTEGER DEFAULT 1,
+      default_status TEXT DEFAULT 'DRAFT',
+      requires_approval INTEGER DEFAULT 0,
+      affects_inventory INTEGER DEFAULT 1,
+      inventory_effect TEXT,
+      show_in_dashboard INTEGER DEFAULT 1,
+      icon_name TEXT,
+      color_code TEXT,
+      template_path TEXT,
+      is_active INTEGER DEFAULT 1,
+      display_order INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice print settings table
+  static const String createInvoicePrintSettingsTable = '''
+    CREATE TABLE invoice_print_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_type TEXT NOT NULL,
+      paper_size TEXT DEFAULT 'A4',
+      paper_orientation TEXT DEFAULT 'PORTRAIT',
+      layout_type TEXT DEFAULT 'STANDARD',
+      print_format TEXT DEFAULT 'PDF',
+      printer_name TEXT,
+      copies INTEGER DEFAULT 1,
+      print_color INTEGER DEFAULT 1,
+      print_duplex INTEGER DEFAULT 0,
+      margin_top REAL DEFAULT 20.0,
+      margin_bottom REAL DEFAULT 20.0,
+      margin_left REAL DEFAULT 20.0,
+      margin_right REAL DEFAULT 20.0,
+      show_watermark INTEGER DEFAULT 0,
+      watermark_text TEXT,
+      watermark_image_path TEXT,
+      watermark_opacity REAL DEFAULT 0.3,
+      watermark_rotation INTEGER DEFAULT 45,
+      watermark_position TEXT DEFAULT 'CENTER',
+      auto_print_on_save INTEGER DEFAULT 0,
+      show_print_dialog INTEGER DEFAULT 1,
+      compress_pdf INTEGER DEFAULT 1,
+      pdf_quality INTEGER DEFAULT 90,
+      enable_thermal_print INTEGER DEFAULT 0,
+      thermal_width INTEGER DEFAULT 80,
+      thermal_paper_length INTEGER DEFAULT 0,
+      thermal_font_size INTEGER DEFAULT 10,
+      thermal_line_spacing REAL DEFAULT 1.2,
+      enable_qr_code INTEGER DEFAULT 0,
+      qr_code_content_template TEXT,
+      enable_barcode INTEGER DEFAULT 0,
+      barcode_content_template TEXT,
+      barcode_type TEXT DEFAULT 'CODE128',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // Invoice activity logs table
+  static const String createInvoiceActivityLogsTable = '''
+    CREATE TABLE invoice_activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id INTEGER NOT NULL,
+      invoice_number TEXT NOT NULL,
+      invoice_type TEXT NOT NULL,
+      action TEXT NOT NULL,
+      action_category TEXT,
+      user_id INTEGER,
+      username TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      old_values TEXT,
+      new_values TEXT,
+      changes_summary TEXT,
+      session_id TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (invoice_id) REFERENCES transactions(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  ''';
 }

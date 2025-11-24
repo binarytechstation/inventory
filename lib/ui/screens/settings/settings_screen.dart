@@ -5,14 +5,14 @@ import 'dart:io';
 import '../../../data/models/user_model.dart';
 import '../../../services/auth/auth_service.dart';
 import '../../../services/backup/backup_service.dart';
-import '../../../services/audit/audit_service.dart';
 import '../../../data/database/database_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../user/change_password_screen.dart';
 import 'profile_edit_screen.dart';
 import 'business_info_screen.dart';
 import 'activity_log_screen.dart';
-import 'invoice_settings_screen.dart';
+import 'invoice_settings_main_screen.dart';
+import 'invoice_activity_log_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -139,7 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const InvoiceSettingsScreen()),
+                MaterialPageRoute(builder: (context) => const InvoiceSettingsMainScreen()),
               );
             },
           ),
@@ -193,6 +193,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ActivityLogScreen()),
+              );
+            },
+          ),
+          _buildSettingsTile(
+            icon: Icons.receipt_long,
+            title: 'Invoice Activity Log',
+            subtitle: 'View invoice-specific activity history',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const InvoiceActivityLogScreen()),
               );
             },
           ),

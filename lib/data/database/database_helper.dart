@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -62,12 +62,23 @@ class DatabaseHelper {
     await db.execute(DatabaseSchema.createSettingsTable);
     await db.execute(DatabaseSchema.createRecoveryCodesTable);
 
+    // Invoice settings tables
+    await db.execute(DatabaseSchema.createInvoiceSettingsTable);
+    await db.execute(DatabaseSchema.createInvoiceHeaderSettingsTable);
+    await db.execute(DatabaseSchema.createInvoiceFooterSettingsTable);
+    await db.execute(DatabaseSchema.createInvoiceBodySettingsTable);
+    await db.execute(DatabaseSchema.createInvoiceTypeSettingsTable);
+    await db.execute(DatabaseSchema.createInvoicePrintSettingsTable);
+    await db.execute(DatabaseSchema.createInvoiceActivityLogsTable);
+
     // Create indexes for better performance
     await db.execute('CREATE INDEX idx_transactions_date ON transactions(transaction_date)');
     await db.execute('CREATE INDEX idx_transactions_type ON transactions(transaction_type)');
     await db.execute('CREATE INDEX idx_transaction_lines_transaction ON transaction_lines(transaction_id)');
     await db.execute('CREATE INDEX idx_transaction_lines_product ON transaction_lines(product_id)');
     await db.execute('CREATE INDEX idx_product_batches_product ON product_batches(product_id)');
+    await db.execute('CREATE INDEX idx_invoice_activity_logs_invoice ON invoice_activity_logs(invoice_id)');
+    await db.execute('CREATE INDEX idx_invoice_activity_logs_date ON invoice_activity_logs(created_at)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -100,6 +111,194 @@ class DatabaseHelper {
       if (heldBillItemsExists.isEmpty) {
         await db.execute(DatabaseSchema.createHeldBillLinesTable);
       }
+    }
+
+    if (oldVersion < 3) {
+      // Migration from version 2 to 3 - Add invoice settings tables
+
+      // Check if invoice_settings table exists
+      final invoiceSettingsExists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='invoice_settings'"
+      );
+
+      if (invoiceSettingsExists.isEmpty) {
+        await db.execute(DatabaseSchema.createInvoiceSettingsTable);
+        await db.execute(DatabaseSchema.createInvoiceHeaderSettingsTable);
+        await db.execute(DatabaseSchema.createInvoiceFooterSettingsTable);
+        await db.execute(DatabaseSchema.createInvoiceBodySettingsTable);
+        await db.execute(DatabaseSchema.createInvoiceTypeSettingsTable);
+        await db.execute(DatabaseSchema.createInvoicePrintSettingsTable);
+        await db.execute(DatabaseSchema.createInvoiceActivityLogsTable);
+
+        // Create indexes
+        await db.execute('CREATE INDEX idx_invoice_activity_logs_invoice ON invoice_activity_logs(invoice_id)');
+        await db.execute('CREATE INDEX idx_invoice_activity_logs_date ON invoice_activity_logs(created_at)');
+
+        // Seed default invoice type settings
+        await _seedInvoiceTypeSettings(db);
+      }
+    }
+  }
+
+  Future<void> _seedInvoiceTypeSettings(Database db) async {
+    final now = DateTime.now().toIso8601String();
+
+    // Default invoice types
+    final invoiceTypes = [
+      {
+        'type_code': 'SALE',
+        'type_name': 'Sales Invoice',
+        'description': 'Invoice for product sales',
+        'prefix': 'INV',
+        'title': 'SALES INVOICE',
+        'enable_party_selection': 1,
+        'party_label': 'Customer',
+        'enable_items': 1,
+        'enable_tax_calculation': 1,
+        'enable_discount': 1,
+        'enable_payment_mode': 1,
+        'enable_notes': 1,
+        'default_status': 'COMPLETED',
+        'requires_approval': 0,
+        'affects_inventory': 1,
+        'inventory_effect': 'DECREASE',
+        'show_in_dashboard': 1,
+        'icon_name': 'receipt',
+        'color_code': '#4CAF50',
+        'is_active': 1,
+        'display_order': 1,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'PURCHASE',
+        'type_name': 'Purchase Invoice',
+        'description': 'Invoice for product purchases',
+        'prefix': 'PUR',
+        'title': 'PURCHASE INVOICE',
+        'enable_party_selection': 1,
+        'party_label': 'Supplier',
+        'enable_items': 1,
+        'enable_tax_calculation': 1,
+        'enable_discount': 1,
+        'enable_payment_mode': 1,
+        'enable_notes': 1,
+        'default_status': 'COMPLETED',
+        'requires_approval': 0,
+        'affects_inventory': 1,
+        'inventory_effect': 'INCREASE',
+        'show_in_dashboard': 1,
+        'icon_name': 'shopping_cart',
+        'color_code': '#2196F3',
+        'is_active': 1,
+        'display_order': 2,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'QUOTATION',
+        'type_name': 'Quotation',
+        'description': 'Price quotation for customers',
+        'prefix': 'QUO',
+        'title': 'QUOTATION',
+        'enable_party_selection': 1,
+        'party_label': 'Customer',
+        'enable_items': 1,
+        'enable_tax_calculation': 1,
+        'enable_discount': 1,
+        'enable_payment_mode': 0,
+        'enable_notes': 1,
+        'default_status': 'DRAFT',
+        'requires_approval': 0,
+        'affects_inventory': 0,
+        'inventory_effect': 'NONE',
+        'show_in_dashboard': 1,
+        'icon_name': 'description',
+        'color_code': '#FF9800',
+        'is_active': 1,
+        'display_order': 3,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'RETURN_SALE',
+        'type_name': 'Sales Return',
+        'description': 'Return invoice for sold products',
+        'prefix': 'SRT',
+        'title': 'SALES RETURN',
+        'enable_party_selection': 1,
+        'party_label': 'Customer',
+        'enable_items': 1,
+        'enable_tax_calculation': 1,
+        'enable_discount': 0,
+        'enable_payment_mode': 1,
+        'enable_notes': 1,
+        'default_status': 'COMPLETED',
+        'requires_approval': 1,
+        'affects_inventory': 1,
+        'inventory_effect': 'INCREASE',
+        'show_in_dashboard': 1,
+        'icon_name': 'undo',
+        'color_code': '#F44336',
+        'is_active': 1,
+        'display_order': 4,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'RETURN_PURCHASE',
+        'type_name': 'Purchase Return',
+        'description': 'Return invoice for purchased products',
+        'prefix': 'PRT',
+        'title': 'PURCHASE RETURN',
+        'enable_party_selection': 1,
+        'party_label': 'Supplier',
+        'enable_items': 1,
+        'enable_tax_calculation': 1,
+        'enable_discount': 0,
+        'enable_payment_mode': 1,
+        'enable_notes': 1,
+        'default_status': 'COMPLETED',
+        'requires_approval': 1,
+        'affects_inventory': 1,
+        'inventory_effect': 'DECREASE',
+        'show_in_dashboard': 1,
+        'icon_name': 'reply',
+        'color_code': '#E91E63',
+        'is_active': 1,
+        'display_order': 5,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'DELIVERY_CHALLAN',
+        'type_name': 'Delivery Challan',
+        'description': 'Delivery note for products',
+        'prefix': 'DC',
+        'title': 'DELIVERY CHALLAN',
+        'enable_party_selection': 1,
+        'party_label': 'Customer',
+        'enable_items': 1,
+        'enable_tax_calculation': 0,
+        'enable_discount': 0,
+        'enable_payment_mode': 0,
+        'enable_notes': 1,
+        'default_status': 'DRAFT',
+        'requires_approval': 0,
+        'affects_inventory': 0,
+        'inventory_effect': 'NONE',
+        'show_in_dashboard': 0,
+        'icon_name': 'local_shipping',
+        'color_code': '#9C27B0',
+        'is_active': 1,
+        'display_order': 6,
+        'created_at': now,
+        'updated_at': now,
+      },
+    ];
+
+    for (final type in invoiceTypes) {
+      await db.insert('invoice_type_settings', type);
     }
   }
 

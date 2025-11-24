@@ -31,7 +31,7 @@ class _POSScreenState extends State<POSScreen> {
   bool _isPercentageDiscount = true;
   bool _isLoading = false;
 
-  double _taxRate = 0; // Can be configured
+  final double _taxRate = 0; // Can be configured
 
   @override
   void initState() {
