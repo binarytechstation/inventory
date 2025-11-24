@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 import '../../../../services/invoice/invoice_settings_service.dart';
+import '../../../../services/invoice/invoice_service.dart';
+import '../../../../services/transaction/transaction_service.dart';
 
 class PrintSettingsTab extends StatefulWidget {
   final String invoiceType;
@@ -43,11 +45,9 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
   String _paperOrientation = 'PORTRAIT';
   String _layoutType = 'STANDARD';
   String _printFormat = 'PDF';
-  String _marginUnit = 'MM';
 
   // Watermark Settings
   bool _enableWatermark = false;
-  String _watermarkType = 'TEXT';
   String? _watermarkImagePath;
   String _watermarkPosition = 'CENTER';
 
@@ -134,7 +134,7 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
           _printFormat = ['PDF', 'HTML', 'TEXT'].contains(formatValue) ? formatValue : 'PDF';
 
           // Handle numeric values flexibly (int or double)
-          final copies = settings['number_of_copies'];
+          final copies = settings['copies'];
           _copiesController.text = (copies is int ? copies : (copies as num?)?.toInt() ?? 1).toString();
 
           // Margins - Handle both int and double
@@ -150,14 +150,8 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
           final marginRight = settings['margin_right'];
           _marginRightController.text = (marginRight is num ? marginRight.toDouble() : 20.0).toString();
 
-          final marginUnitValue = settings['margin_unit'] as String? ?? 'MM';
-          _marginUnit = ['MM', 'INCHES'].contains(marginUnitValue) ? marginUnitValue : 'MM';
-
           // Watermark
-          _enableWatermark = (settings['enable_watermark'] as int? ?? 0) == 1;
-
-          final watermarkTypeValue = settings['watermark_type'] as String? ?? 'TEXT';
-          _watermarkType = ['TEXT', 'IMAGE'].contains(watermarkTypeValue) ? watermarkTypeValue : 'TEXT';
+          _enableWatermark = (settings['show_watermark'] as int? ?? 0) == 1;
 
           _watermarkTextController.text = settings['watermark_text'] as String? ?? 'DRAFT';
           _watermarkImagePath = settings['watermark_image_path'] as String?;
@@ -238,19 +232,17 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
         'paper_orientation': _paperOrientation,
         'layout_type': _layoutType,
         'print_format': _printFormat,
-        'number_of_copies': safeParseInt(_copiesController.text, 1),
+        'copies': safeParseInt(_copiesController.text, 1),
         // Margins
         'margin_top': safeParseDouble(_marginTopController.text, 20.0),
         'margin_bottom': safeParseDouble(_marginBottomController.text, 20.0),
         'margin_left': safeParseDouble(_marginLeftController.text, 20.0),
         'margin_right': safeParseDouble(_marginRightController.text, 20.0),
-        'margin_unit': _marginUnit,
         // Watermark
-        'enable_watermark': _enableWatermark ? 1 : 0,
-        'watermark_type': _watermarkType,
+        'show_watermark': _enableWatermark ? 1 : 0,
         'watermark_text': _watermarkTextController.text.trim(),
         'watermark_image_path': _watermarkImagePath,
-        'watermark_opacity': safeParseInt(_watermarkOpacityController.text, 30),
+        'watermark_opacity': safeParseDouble(_watermarkOpacityController.text, 30.0) / 100.0,
         'watermark_rotation': safeParseInt(_watermarkRotationController.text, 45),
         'watermark_position': _watermarkPosition,
         // PDF Settings
@@ -283,51 +275,207 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
     }
   }
 
-  Future<void> _pickWatermarkImage() async {
+  Future<void> _showTestPrintDialog() async {
+    final transactionService = TransactionService();
+    final invoiceService = InvoiceService();
+
+    // Get recent transactions
+    final allTransactions = await transactionService.getTransactions(sortBy: 'transaction_date', sortOrder: 'DESC');
+    final transactions = allTransactions.take(10).toList();
+
+    if (!mounted) return;
+
+    if (transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No transactions available. Create a sale or purchase first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    int? selectedTransactionId;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Test Print - Select Transaction'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Select a transaction to generate a test invoice:'),
+                const SizedBox(height: 16),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: transactions.length,
+                    itemBuilder: (context, index) {
+                      final txn = transactions[index];
+                      final isSelected = selectedTransactionId == txn['id'];
+                      return ListTile(
+                        selected: isSelected,
+                        leading: CircleAvatar(
+                          backgroundColor: txn['transaction_type'] == 'BUY' ? Colors.blue : Colors.green,
+                          child: Icon(
+                            txn['transaction_type'] == 'BUY' ? Icons.shopping_cart : Icons.point_of_sale,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          txn['invoice_number'] as String,
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${txn['party_name'] ?? 'N/A'} - \$${(txn['total_amount'] as num).toStringAsFixed(2)}',
+                        ),
+                        trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                        onTap: () {
+                          setDialogState(() {
+                            selectedTransactionId = txn['id'] as int;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: selectedTransactionId == null
+                  ? null
+                  : () async {
+                      Navigator.pop(context);
+                      await _generateTestInvoice(invoiceService, selectedTransactionId!);
+                    },
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Generate PDF'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateTestInvoice(InvoiceService invoiceService, int transactionId) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating test invoice...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['png', 'jpg', 'jpeg'],
-        dialogTitle: 'Select Watermark Image',
+      // Generate PDF
+      final pdfPath = await invoiceService.generateInvoicePDF(
+        transactionId: transactionId,
+        saveToFile: true,
       );
 
-      if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
 
-      setState(() {
-        _watermarkImagePath = result.files.first.path;
-      });
+      // Show success dialog
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Success'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Test invoice generated successfully!'),
+              const SizedBox(height: 16),
+              const Text('Saved to:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(
+                pdfPath,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _openPDF(pdfPath);
+              },
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open PDF'),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error selecting image: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating PDF: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 
-  void _showTestPrintDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Test Print'),
-        content: const Text('Test print functionality will generate a sample invoice with current settings.\n\nThis feature requires PDF generation implementation.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+  Future<void> _openPDF(String pdfPath) async {
+    try {
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', pdfPath]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [pdfPath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [pdfPath]);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open PDF: $e'),
+            backgroundColor: Colors.orange,
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Test print - PDF generation not yet implemented')),
-              );
-            },
-            child: const Text('Generate Test'),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
@@ -448,20 +596,7 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Margins Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue: _marginUnit,
-                    decoration: const InputDecoration(
-                      labelText: 'Margin Unit',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'MM', child: Text('Millimeters (mm)')),
-                      DropdownMenuItem(value: 'INCHES', child: Text('Inches')),
-                    ],
-                    onChanged: (v) => setState(() => _marginUnit = v!),
-                  ),
+                  const Text('Margins Configuration (in mm)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -540,39 +675,14 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
                   ),
                   if (_enableWatermark) ...[
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _watermarkType,
+                    TextFormField(
+                      controller: _watermarkTextController,
                       decoration: const InputDecoration(
-                        labelText: 'Watermark Type',
+                        labelText: 'Watermark Text',
+                        hintText: 'DRAFT / COPY / CONFIDENTIAL',
                         border: OutlineInputBorder(),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'TEXT', child: Text('Text')),
-                        DropdownMenuItem(value: 'IMAGE', child: Text('Image')),
-                      ],
-                      onChanged: (v) => setState(() => _watermarkType = v!),
                     ),
-                    const SizedBox(height: 16),
-                    if (_watermarkType == 'TEXT') ...[
-                      TextFormField(
-                        controller: _watermarkTextController,
-                        decoration: const InputDecoration(
-                          labelText: 'Watermark Text',
-                          hintText: 'DRAFT / COPY / CONFIDENTIAL',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ] else ...[
-                      OutlinedButton.icon(
-                        onPressed: _pickWatermarkImage,
-                        icon: const Icon(Icons.image),
-                        label: Text(_watermarkImagePath == null ? 'Select Watermark Image' : 'Change Image'),
-                      ),
-                      if (_watermarkImagePath != null) ...[
-                        const SizedBox(height: 8),
-                        Text('Selected: ${_watermarkImagePath!.split('\\').last}', style: const TextStyle(fontSize: 12)),
-                      ],
-                    ],
                     const SizedBox(height: 16),
                     Row(
                       children: [

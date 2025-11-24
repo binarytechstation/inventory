@@ -149,14 +149,14 @@ class _BodySettingsTabState extends State<BodySettingsTab> {
 
           // Item Table Columns
           _showItemCode = (settings['show_item_code'] as int? ?? 1) == 1;
-          _showDescription = (settings['show_description'] as int? ?? 1) == 1;
-          _showHsn = (settings['show_hsn'] as int? ?? 0) == 1;
-          _showUnit = (settings['show_unit'] as int? ?? 1) == 1;
-          _showQuantity = (settings['show_quantity'] as int? ?? 1) == 1;
-          _showPrice = (settings['show_price'] as int? ?? 1) == 1;
-          _showItemDiscount = (settings['show_discount'] as int? ?? 1) == 1;
-          _showItemTax = (settings['show_tax'] as int? ?? 1) == 1;
-          _showAmount = (settings['show_amount'] as int? ?? 1) == 1;
+          _showDescription = (settings['show_item_description'] as int? ?? 1) == 1;
+          _showHsn = (settings['show_hsn_code'] as int? ?? 0) == 1;
+          _showUnit = (settings['show_unit_column'] as int? ?? 1) == 1;
+          _showQuantity = (settings['show_quantity_column'] as int? ?? 1) == 1;
+          _showPrice = (settings['show_unit_price_column'] as int? ?? 1) == 1;
+          _showItemDiscount = (settings['show_discount_column'] as int? ?? 1) == 1;
+          _showItemTax = (settings['show_tax_column'] as int? ?? 1) == 1;
+          _showAmount = (settings['show_amount_column'] as int? ?? 1) == 1;
           _showItemImage = (settings['show_item_image'] as int? ?? 0) == 1;
           _tableHeaderJsonController.text = settings['table_header_json'] as String? ?? '';
 
@@ -222,14 +222,14 @@ class _BodySettingsTabState extends State<BodySettingsTab> {
         'party_label': _partyLabelController.text.trim(),
         // Item Table
         'show_item_code': _showItemCode ? 1 : 0,
-        'show_description': _showDescription ? 1 : 0,
-        'show_hsn': _showHsn ? 1 : 0,
-        'show_unit': _showUnit ? 1 : 0,
-        'show_quantity': _showQuantity ? 1 : 0,
-        'show_price': _showPrice ? 1 : 0,
-        'show_discount': _showItemDiscount ? 1 : 0,
-        'show_tax': _showItemTax ? 1 : 0,
-        'show_amount': _showAmount ? 1 : 0,
+        'show_item_description': _showDescription ? 1 : 0,
+        'show_hsn_code': _showHsn ? 1 : 0,
+        'show_unit_column': _showUnit ? 1 : 0,
+        'show_quantity_column': _showQuantity ? 1 : 0,
+        'show_unit_price_column': _showPrice ? 1 : 0,
+        'show_discount_column': _showItemDiscount ? 1 : 0,
+        'show_tax_column': _showItemTax ? 1 : 0,
+        'show_amount_column': _showAmount ? 1 : 0,
         'show_item_image': _showItemImage ? 1 : 0,
         'table_header_json': _tableHeaderJsonController.text.trim(),
         // Styling
