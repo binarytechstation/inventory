@@ -401,4 +401,124 @@ class TransactionService {
       );
     });
   }
+
+  /// Create a purchase order with a new lot and products
+  /// This is the main method for the new lot-based system
+  Future<int> createPurchaseOrderWithLot({
+    required int supplierId,
+    required DateTime date,
+    required Map<String, dynamic> lotData,
+    required List<Map<String, dynamic>> products,
+    required String paymentMode,
+    String? notes,
+    required double subtotal,
+    required double discount,
+    required double tax,
+    required double total,
+  }) async {
+    final db = await _dbHelper.database;
+
+    // Generate invoice number BEFORE starting transaction
+    final invoiceNo = await _generateInvoiceNumberBeforeTransaction('BUY');
+
+    // Get current currency settings
+    final currencyCode = await _currencyService.getCurrencyCode();
+    final currencySymbol = await _currencyService.getCurrencySymbol();
+
+    return await db.transaction((txn) async {
+      // 1. Get or create the lot
+      int lotId;
+
+      // Get next lot ID
+      final maxLotResult = await txn.rawQuery('SELECT COALESCE(MAX(lot_id), 0) + 1 as next_id FROM lots');
+      lotId = maxLotResult.first['next_id'] as int;
+
+      await txn.insert('lots', {
+        'lot_id': lotId,
+        'received_date': lotData['received_date'] ?? date.toIso8601String(),
+        'description': lotData['description'] ?? lotData['lot_name'] ?? 'Lot #$lotId',
+        'is_active': 1,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // Get supplier name
+      final suppliers = await txn.query('suppliers', where: 'id = ?', whereArgs: [supplierId]);
+      final supplierName = suppliers.isNotEmpty ? suppliers.first['name'] as String? : null;
+
+      // 2. Create transaction record
+      final transactionId = await txn.insert('transactions', {
+        'invoice_number': invoiceNo,
+        'transaction_type': 'BUY',
+        'transaction_date': date.toIso8601String(),
+        'party_id': supplierId,
+        'party_type': 'supplier',
+        'party_name': supplierName,
+        'subtotal': subtotal,
+        'discount_amount': discount,
+        'tax_amount': tax,
+        'total_amount': total,
+        'payment_mode': paymentMode,
+        'status': 'COMPLETED',
+        'notes': notes,
+        'currency_code': currencyCode,
+        'currency_symbol': currencySymbol,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // 3. Create products and transaction lines
+      for (final productData in products) {
+        // Get next product ID
+        final maxProductResult = await txn.rawQuery(
+          'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products'
+        );
+        final productId = maxProductResult.first['next_id'] as int;
+
+        // Insert product
+        await txn.insert('products', {
+          'product_id': productId,
+          'lot_id': lotId,
+          'product_name': productData['product_name'],
+          'unit_price': productData['buying_price'],
+          'unit': productData['unit'],
+          'category': productData['category'] ?? '',
+          'sku': productData['sku'] ?? '',
+          'barcode': productData['barcode'] ?? '',
+          'product_description': productData['description'] ?? '',
+          'is_active': 1,
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        // Insert stock record
+        await txn.insert('stock', {
+          'lot_id': lotId,
+          'product_id': productId,
+          'count': productData['quantity'],
+          'reorder_level': productData['reorder_level'] ?? 0,
+          'reserved_quantity': 0,
+          'last_stock_update': DateTime.now().toIso8601String(),
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        // Insert transaction line
+        await txn.insert('transaction_lines', {
+          'transaction_id': transactionId,
+          'product_id': productId,
+          'lot_id': lotId,
+          'product_name': productData['product_name'],
+          'quantity': productData['quantity'],
+          'unit': productData['unit'],
+          'unit_price': productData['buying_price'],
+          'discount_amount': 0,
+          'tax_amount': 0,
+          'line_total': (productData['quantity'] as double) * (productData['buying_price'] as double),
+        });
+      }
+
+      return transactionId;
+    });
+  }
 }

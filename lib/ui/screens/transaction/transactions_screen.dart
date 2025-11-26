@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'transaction_form_screen.dart';
+import 'purchase_order_screen.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/currency/currency_service.dart';
 import '../../../services/invoice/invoice_service.dart';
@@ -35,7 +36,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TransactionFormScreen(transactionType: type),
+        builder: (context) {
+          // Use new Purchase Order screen for BUY transactions
+          if (type == 'BUY') {
+            return const PurchaseOrderScreen();
+          }
+          // Use old form for SELL transactions
+          return TransactionFormScreen(transactionType: type);
+        },
       ),
     );
 

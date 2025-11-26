@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../../data/models/product_model.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/currency/currency_service.dart';
-import '../../providers/auth_provider.dart';
-import 'product_form_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -97,69 +93,190 @@ class _ProductsScreenState extends State<ProductsScreen> {
     });
   }
 
-  Future<void> _deleteProduct(Map<String, dynamic> product) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Product'),
-        content: Text('Are you sure you want to delete ${product['name']}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _showProductLotDetails(Map<String, dynamic> product) async {
+    final productId = product['id'] as int;
 
-    if (confirm == true) {
-      try {
-        await _productService.deactivateProduct(product['id'] as int);
-        _loadProducts();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Product deleted successfully')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting product: $e')),
-          );
-        }
+    try {
+      // Get all lots for this product
+      final lots = await _productService.getProductsInLot(productId);
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          child: Container(
+            width: 600,
+            constraints: const BoxConstraints(maxHeight: 700),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product['name'] as String? ?? 'Unknown',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              '${lots.length} lot(s) available',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                // Lot list
+                Expanded(
+                  child: lots.isEmpty
+                      ? const Center(
+                          child: Text('No lots available for this product'),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: lots.length,
+                          itemBuilder: (context, index) {
+                            final lot = lots[index];
+                            final lotId = lot['lot_id'] as int? ?? 0;
+                            final receivedDate = lot['received_date'] as String?;
+                            final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
+                            final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
+                            final unit = lot['unit'] as String? ?? 'piece';
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade100,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            'Lot #$lotId',
+                                            style: TextStyle(
+                                              color: Colors.blue.shade900,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        if (receivedDate != null)
+                                          Text(
+                                            DateTime.tryParse(receivedDate)
+                                                    ?.toLocal()
+                                                    .toString()
+                                                    .split(' ')[0] ??
+                                                receivedDate,
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const Divider(height: 24),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildLotDetailRow(
+                                            'Stock',
+                                            '${stock.toStringAsFixed(2)} $unit',
+                                            Icons.inventory_2,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: _buildLotDetailRow(
+                                            'Unit Price',
+                                            '$_currencySymbol${unitPrice.toStringAsFixed(2)}',
+                                            Icons.attach_money,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildLotDetailRow(
+                                      'Total Value',
+                                      '$_currencySymbol${(stock * unitPrice).toStringAsFixed(2)}',
+                                      Icons.calculate,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading lot details: $e')),
+        );
       }
     }
   }
 
-  void _navigateToAddProduct() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ProductFormScreen(),
-      ),
+  Widget _buildLotDetailRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
-    if (result == true) {
-      _loadProducts();
-    }
-  }
-
-  void _navigateToEditProduct(Map<String, dynamic> product) async {
-    // Convert map to ProductModel for the form screen
-    final productModel = ProductModel.fromMap(product);
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProductFormScreen(product: productModel),
-      ),
-    );
-    if (result == true) {
-      _loadProducts();
-    }
   }
 
   Future<void> _showCategoryFilter() async {
@@ -284,26 +401,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             const SizedBox(height: 16),
                             Text(
                               _searchController.text.isEmpty && _selectedCategory == null
-                                  ? 'No products yet'
+                                  ? 'No products yet. Create a Purchase Order to add products.'
                                   : 'No products found',
                               style: const TextStyle(fontSize: 18, color: Colors.grey),
+                              textAlign: TextAlign.center,
                             ),
-                            const SizedBox(height: 8),
-                            if (_searchController.text.isEmpty && _selectedCategory == null)
-                              Consumer<AuthProvider>(
-                                builder: (context, authProvider, child) {
-                                  final canCreate = authProvider.currentUser?.hasPermission('create_product') ?? false;
-
-                                  return Tooltip(
-                                    message: canCreate ? '' : 'Admin access only',
-                                    child: ElevatedButton.icon(
-                                      onPressed: canCreate ? _navigateToAddProduct : null,
-                                      icon: const Icon(Icons.add),
-                                      label: const Text('Add First Product'),
-                                    ),
-                                  );
-                                },
-                              ),
                           ],
                         ),
                       )
@@ -412,87 +514,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                   ),
                                 ],
                               ),
-                              trailing: Consumer<AuthProvider>(
-                                builder: (context, authProvider, child) {
-                                  final canEdit = authProvider.currentUser?.hasPermission('edit_product') ?? false;
-
-                                  if (!canEdit) {
-                                    return const SizedBox.shrink();
-                                  }
-
-                                  return PopupMenuButton(
-                                    itemBuilder: (context) => [
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit, size: 20),
-                                            SizedBox(width: 8),
-                                            Text('Edit'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete, size: 20, color: Colors.red),
-                                            SizedBox(width: 8),
-                                            Text('Delete', style: TextStyle(color: Colors.red)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    onSelected: (value) {
-                                      if (value == 'edit') {
-                                        _navigateToEditProduct(productMap);
-                                      } else if (value == 'delete') {
-                                        _deleteProduct(productMap);
-                                      }
-                                    },
-                                  );
-                                },
-                              ),
-                              onTap: () {
-                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                                final canEdit = authProvider.currentUser?.hasPermission('edit_product') ?? false;
-                                if (canEdit) {
-                                  _navigateToEditProduct(productMap);
-                                }
-                              },
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _showProductLotDetails(productMap),
                             ),
                           );
                         },
                       ),
           ),
         ],
-      ),
-      floatingActionButton: Consumer<AuthProvider>(
-        builder: (context, authProvider, child) {
-          final canCreate = authProvider.currentUser?.hasPermission('create_product') ?? false;
-
-          if (!canCreate) {
-            // Show disabled button with tooltip for viewers
-            return Tooltip(
-              message: 'Admin access only',
-              child: Opacity(
-                opacity: 0.5,
-                child: FloatingActionButton.extended(
-                  onPressed: null,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Product'),
-                  backgroundColor: Colors.grey,
-                ),
-              ),
-            );
-          }
-
-          return FloatingActionButton.extended(
-            onPressed: _navigateToAddProduct,
-            icon: const Icon(Icons.add),
-            label: const Text('Add Product'),
-          );
-        },
       ),
     );
   }
