@@ -1,7 +1,9 @@
-import 'dart:io';
 import 'dart:convert';
+import 'package:universal_io/io.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:crypto/crypto.dart';
 import '../constants/app_constants.dart';
+import 'package:universal_html/html.dart' as web;
 
 class DeviceFingerprint {
   static DeviceFingerprint? _instance;
@@ -22,7 +24,9 @@ class DeviceFingerprint {
 
     List<String> identifiers = [];
 
-    if (Platform.isWindows) {
+    if (kIsWeb) {
+      identifiers = await _getWebIdentifiers();
+    } else if (Platform.isWindows) {
       identifiers = await _getWindowsIdentifiers();
     } else if (Platform.isLinux) {
       identifiers = await _getLinuxIdentifiers();
@@ -201,6 +205,33 @@ class DeviceFingerprint {
 
     if (identifiers.length < 2) {
       throw Exception('Unable to generate device fingerprint: insufficient hardware identifiers found');
+    }
+
+    return identifiers;
+  }
+
+  /// Get Web browser identifiers
+  Future<List<String>> _getWebIdentifiers() async {
+    List<String> identifiers = [];
+
+    // For web, we'll use browser fingerprinting techniques
+    // This is a simplified version - in production you might want more sophisticated methods
+
+    // Use a combination of browser properties
+    identifiers.add('PLATFORM:web');
+    identifiers.add('USERAGENT:${web.window.navigator.userAgent}');
+    identifiers.add('LANGUAGE:${web.window.navigator.language}');
+
+    // Screen resolution
+    identifiers.add('SCREEN:${web.window.screen?.width}x${web.window.screen?.height}');
+
+    // Timezone
+    identifiers.add('TIMEZONE:${DateTime.now().timeZoneOffset.inMinutes}');
+
+    // Hardware concurrency (CPU cores)
+    final hardwareConcurrency = web.window.navigator.hardwareConcurrency;
+    if (hardwareConcurrency != null) {
+      identifiers.add('CORES:$hardwareConcurrency');
     }
 
     return identifiers;

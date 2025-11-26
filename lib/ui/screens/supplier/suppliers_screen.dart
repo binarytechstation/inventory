@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/supplier_model.dart';
 import '../../../services/supplier/supplier_service.dart';
+import '../../providers/auth_provider.dart';
 import 'supplier_form_screen.dart';
 
 class SuppliersScreen extends StatefulWidget {
@@ -250,38 +252,54 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                                     ),
                                 ],
                               ),
-                              trailing: PopupMenuButton(
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('Edit'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, size: 20, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Delete', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (value) {
-                                  if (value == 'edit') {
-                                    _navigateToEditSupplier(supplier);
-                                  } else if (value == 'delete') {
-                                    _deleteSupplier(supplier);
+                              trailing: Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  final canEdit = authProvider.currentUser?.hasPermission('edit_supplier') ?? false;
+
+                                  if (!canEdit) {
+                                    return const SizedBox.shrink();
                                   }
+
+                                  return PopupMenuButton(
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _navigateToEditSupplier(supplier);
+                                      } else if (value == 'delete') {
+                                        _deleteSupplier(supplier);
+                                      }
+                                    },
+                                  );
                                 },
                               ),
-                              onTap: () => _navigateToEditSupplier(supplier),
+                              onTap: () {
+                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                                final canEdit = authProvider.currentUser?.hasPermission('edit_supplier') ?? false;
+                                if (canEdit) {
+                                  _navigateToEditSupplier(supplier);
+                                }
+                              },
                             ),
                           );
                         },
@@ -289,10 +307,31 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddSupplier,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Supplier'),
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final canCreate = authProvider.currentUser?.hasPermission('create_supplier') ?? false;
+
+          if (!canCreate) {
+            return Tooltip(
+              message: 'Admin access only',
+              child: Opacity(
+                opacity: 0.5,
+                child: FloatingActionButton.extended(
+                  onPressed: null,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Supplier'),
+                  backgroundColor: Colors.grey,
+                ),
+              ),
+            );
+          }
+
+          return FloatingActionButton.extended(
+            onPressed: _navigateToAddSupplier,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Supplier'),
+          );
+        },
       ),
     );
   }

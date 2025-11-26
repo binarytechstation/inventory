@@ -5,6 +5,7 @@ import '../../../services/product/product_service.dart';
 import '../../../services/customer/customer_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/invoice/invoice_service.dart';
+import '../../../services/currency/currency_service.dart';
 import '../../../data/models/product_model.dart';
 import '../../../data/models/customer_model.dart';
 
@@ -20,12 +21,13 @@ class _POSScreenState extends State<POSScreen> {
   final CustomerService _customerService = CustomerService();
   final TransactionService _transactionService = TransactionService();
   final InvoiceService _invoiceService = InvoiceService();
+  final CurrencyService _currencyService = CurrencyService();
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
 
-  List<ProductModel> _products = [];
-  List<ProductModel> _filteredProducts = [];
+  List<dynamic> _products = [];
+  List<dynamic> _filteredProducts = [];
   List<CustomerModel> _customers = [];
 
   final Map<int, _CartItem> _cart = {};
@@ -33,6 +35,7 @@ class _POSScreenState extends State<POSScreen> {
   String _paymentMethod = 'cash';
   bool _isPercentageDiscount = true;
   bool _isLoading = false;
+  String _currencySymbol = '৳';
 
   final double _taxRate = 0; // Can be configured
 
@@ -40,7 +43,21 @@ class _POSScreenState extends State<POSScreen> {
   void initState() {
     super.initState();
     _loadInitialData();
+    _loadCurrencySymbol();
     _searchController.addListener(_filterProducts);
+  }
+
+  Future<void> _loadCurrencySymbol() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol;
+        });
+      }
+    } catch (e) {
+      // Use default Taka symbol if error
+    }
   }
 
   @override
@@ -79,15 +96,22 @@ class _POSScreenState extends State<POSScreen> {
         _filteredProducts = _products;
       } else {
         _filteredProducts = _products.where((product) {
-          return product.name.toLowerCase().contains(query) ||
-              (product.barcode?.toLowerCase().contains(query) ?? false) ||
-              (product.sku?.toLowerCase().contains(query) ?? false);
+          final productMap = product as Map<String, dynamic>;
+          final name = (productMap['name'] as String?)?.toLowerCase() ?? '';
+          final barcode = (productMap['barcode'] as String?)?.toLowerCase() ?? '';
+          final sku = (productMap['sku'] as String?)?.toLowerCase() ?? '';
+          return name.contains(query) ||
+              barcode.contains(query) ||
+              sku.contains(query);
         }).toList();
       }
     });
   }
 
-  void _addToCart(ProductModel product) async {
+  void _addToCart(Map<String, dynamic> productMap) async {
+    // Convert map to ProductModel for cart operations
+    final product = ProductModel.fromMap(productMap);
+
     // Check stock
     final stock = await _productService.getProductStock(product.id!);
     final currentQty = _cart[product.id]?.quantity ?? 0;
@@ -464,14 +488,18 @@ class _POSScreenState extends State<POSScreen> {
     );
   }
 
-  Widget _buildProductCard(ProductModel product) {
+  Widget _buildProductCard(Map<String, dynamic> productMap) {
+    final productName = (productMap['name'] as String?) ?? 'Unknown';
+    final sellingPrice = ((productMap['default_selling_price'] as num?)?.toDouble() ?? 0.0);
+    final productSku = productMap['sku'] as String?;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
-        onTap: () => _addToCart(product),
+        onTap: () => _addToCart(productMap),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -492,7 +520,7 @@ class _POSScreenState extends State<POSScreen> {
               const SizedBox(height: 8),
               // Product name
               Text(
-                product.name,
+                productName,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -503,16 +531,16 @@ class _POSScreenState extends State<POSScreen> {
               const Spacer(),
               // Price and SKU
               Text(
-                '\$${product.defaultSellingPrice.toStringAsFixed(2)}',
+                '$_currencySymbol${sellingPrice.toStringAsFixed(2)}',
                 style: const TextStyle(
                   color: Colors.green,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
-              if (product.sku != null)
+              if (productSku != null)
                 Text(
-                  'SKU: ${product.sku}',
+                  'SKU: $productSku',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 11,
@@ -678,13 +706,13 @@ class _POSScreenState extends State<POSScreen> {
                 // Unit price
                 Expanded(
                   child: Text(
-                    '\$${item.unitPrice.toStringAsFixed(2)}',
+                    '$_currencySymbol${item.unitPrice.toStringAsFixed(2)}',
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                 ),
                 // Line total
                 Text(
-                  '\$${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
+                  '$_currencySymbol${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -769,9 +797,9 @@ class _POSScreenState extends State<POSScreen> {
               ),
               const SizedBox(width: 8),
               SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: true, label: Text('%')),
-                  ButtonSegment(value: false, label: Text('\$')),
+                segments: [
+                  const ButtonSegment(value: true, label: Text('%')),
+                  ButtonSegment(value: false, label: Text(_currencySymbol)),
                 ],
                 selected: {_isPercentageDiscount},
                 onSelectionChanged: (Set<bool> newSelection) {
@@ -844,7 +872,7 @@ class _POSScreenState extends State<POSScreen> {
             ),
           ),
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            '$_currencySymbol${amount.toStringAsFixed(2)}',
             style: TextStyle(
               fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
               fontSize: isTotal ? 20 : 14,

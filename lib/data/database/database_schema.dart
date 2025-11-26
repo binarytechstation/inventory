@@ -70,22 +70,19 @@ class DatabaseSchema {
     )
   ''';
 
-  // Products table
-  static const String createProductsTable = '''
-    CREATE TABLE products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      sku TEXT UNIQUE,
-      barcode TEXT,
+  // ============================================================
+  // LOT-BASED INVENTORY SYSTEM - NEW SCHEMA
+  // ============================================================
+
+  // Lots table - Master table for all incoming inventory lots
+  static const String createLotsTable = '''
+    CREATE TABLE lots (
+      lot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      received_date TEXT NOT NULL,
       description TEXT,
-      unit TEXT DEFAULT 'piece',
-      default_purchase_price REAL DEFAULT 0,
-      default_selling_price REAL DEFAULT 0,
-      tax_rate REAL DEFAULT 0,
-      reorder_level INTEGER DEFAULT 0,
-      category TEXT,
-      image_path TEXT,
       supplier_id INTEGER,
+      reference_number TEXT,
+      notes TEXT,
       is_active INTEGER DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -93,9 +90,93 @@ class DatabaseSchema {
     )
   ''';
 
+  // Products table - Redesigned with composite primary key
+  static const String createProductsTable = '''
+    CREATE TABLE products (
+      product_id INTEGER NOT NULL,
+      lot_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      product_image TEXT,
+      product_description TEXT,
+      unit TEXT DEFAULT 'piece',
+      sku TEXT,
+      barcode TEXT,
+      category TEXT,
+      tax_rate REAL DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (product_id, lot_id),
+      FOREIGN KEY (lot_id) REFERENCES lots(lot_id) ON DELETE CASCADE
+    )
+  ''';
+
+  // Stock table - Tracks inventory levels per product per lot
+  static const String createStockTable = '''
+    CREATE TABLE stock (
+      stock_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lot_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      count REAL NOT NULL DEFAULT 0,
+      reorder_level REAL DEFAULT 0,
+      reserved_quantity REAL DEFAULT 0,
+      last_stock_update TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (lot_id) REFERENCES lots(lot_id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id, lot_id) REFERENCES products(product_id, lot_id) ON DELETE CASCADE,
+      UNIQUE (lot_id, product_id),
+      CHECK (count >= 0),
+      CHECK (reorder_level >= 0)
+    )
+  ''';
+
+  // Lot history table - Audit trail for stock movements
+  static const String createLotHistoryTable = '''
+    CREATE TABLE lot_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lot_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      quantity_change REAL NOT NULL,
+      quantity_before REAL NOT NULL,
+      quantity_after REAL NOT NULL,
+      reference_type TEXT,
+      reference_id INTEGER,
+      user_id INTEGER,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (lot_id) REFERENCES lots(lot_id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id, lot_id) REFERENCES products(product_id, lot_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  ''';
+
+  // Product master table (optional) - Catalog of products independent of lots
+  static const String createProductMasterTable = '''
+    CREATE TABLE product_master (
+      product_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_name TEXT UNIQUE NOT NULL,
+      default_unit TEXT DEFAULT 'piece',
+      default_category TEXT,
+      default_sku_prefix TEXT,
+      default_image TEXT,
+      default_description TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  // ============================================================
+  // LEGACY TABLES (kept for migration compatibility)
+  // ============================================================
+
   // Product batches table (for tracking different purchase prices)
+  // NOTE: This will be migrated to the new lot-based system
   static const String createProductBatchesTable = '''
-    CREATE TABLE product_batches (
+    CREATE TABLE product_batches_legacy (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
       batch_code TEXT,
@@ -106,18 +187,19 @@ class DatabaseSchema {
       purchase_date TEXT NOT NULL,
       notes TEXT,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (product_id) REFERENCES products(id),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     )
   ''';
 
   // Transactions table (for both purchases and sales)
+  // Updated to support lot-based inventory
   static const String createTransactionsTable = '''
     CREATE TABLE transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT UNIQUE NOT NULL,
       transaction_type TEXT NOT NULL,
       transaction_date TEXT NOT NULL,
+      lot_id INTEGER,
       party_id INTEGER,
       party_type TEXT,
       party_name TEXT,
@@ -129,33 +211,39 @@ class DatabaseSchema {
       payment_mode TEXT NOT NULL,
       status TEXT DEFAULT 'COMPLETED',
       notes TEXT,
+      currency_code TEXT DEFAULT 'BDT',
+      currency_symbol TEXT DEFAULT '৳',
       created_by INTEGER,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      FOREIGN KEY (lot_id) REFERENCES lots(lot_id),
       FOREIGN KEY (created_by) REFERENCES users(id)
     )
   ''';
 
   // Transaction lines table
+  // Updated to support lot-based inventory with composite foreign key
   static const String createTransactionLinesTable = '''
     CREATE TABLE transaction_lines (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       transaction_id INTEGER NOT NULL,
+      lot_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
       product_name TEXT NOT NULL,
-      batch_id INTEGER,
       quantity REAL NOT NULL,
       unit TEXT,
       unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
       discount_amount REAL DEFAULT 0,
       discount_percentage REAL DEFAULT 0,
       tax_amount REAL DEFAULT 0,
       tax_rate REAL DEFAULT 0,
       line_total REAL NOT NULL,
       notes TEXT,
+      created_at TEXT NOT NULL,
       FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id),
-      FOREIGN KEY (batch_id) REFERENCES product_batches(id)
+      FOREIGN KEY (lot_id) REFERENCES lots(lot_id),
+      FOREIGN KEY (product_id, lot_id) REFERENCES products(product_id, lot_id)
     )
   ''';
 
@@ -254,8 +342,8 @@ class DatabaseSchema {
       number_format TEXT DEFAULT 'PREFIX-NNNN',
       enable_auto_increment INTEGER DEFAULT 1,
       reset_period TEXT DEFAULT 'NEVER',
-      currency_code TEXT DEFAULT 'USD',
-      currency_symbol TEXT DEFAULT '\$',
+      currency_code TEXT DEFAULT 'BDT',
+      currency_symbol TEXT DEFAULT '৳',
       default_tax_rate REAL DEFAULT 0,
       enable_tax_by_default INTEGER DEFAULT 1,
       enable_discount_by_default INTEGER DEFAULT 0,

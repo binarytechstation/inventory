@@ -1,8 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../services/reports/reports_service.dart';
 import '../../../services/export/pdf_export_service.dart';
 import '../../../services/export/excel_export_service.dart';
+import '../../../services/currency/currency_service.dart';
+import '../../providers/auth_provider.dart';
+import 'transaction_details_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -15,6 +19,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final ReportsService _reportsService = ReportsService();
   final PdfExportService _pdfService = PdfExportService();
   final ExcelExportService _excelService = ExcelExportService();
+  final CurrencyService _currencyService = CurrencyService();
+  String _currencySymbol = 'Tk';
 
   // Store current report data for export
   Map<String, dynamic>? _currentSalesData;
@@ -27,6 +33,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Map<String, dynamic>>? _currentCategoryData;
   DateTimeRange? _currentDateRange;
   bool _isTopPerformers = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrency();
+  }
+
+  Future<void> _loadCurrency() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      // Use 'Tk' for display instead of ৳
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol == '৳' ? 'Tk' : symbol;
+        });
+      }
+    } catch (e) {
+      // Use default
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +98,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
       mainAxisSpacing: 24,
       childAspectRatio: 1.2,
       children: [
+        _buildReportCard(
+          title: 'Transaction Details',
+          description: 'Detailed transaction reports with date range and hourly analysis',
+          icon: Icons.receipt_long,
+          color: Colors.cyan,
+          onView: () => _navigateToTransactionDetails(context),
+          onExportPDF: null, // Export handled in detail screen
+          onExportExcel: null, // Export handled in detail screen
+        ),
         _buildReportCard(
           title: 'Sales Summary',
           description: 'View sales performance, revenue, and transaction details',
@@ -148,14 +183,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  void _navigateToTransactionDetails(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const TransactionDetailsScreen(),
+      ),
+    );
+  }
+
   Widget _buildReportCard({
     required String title,
     required String description,
     required IconData icon,
     required Color color,
     required VoidCallback onView,
-    required VoidCallback onExportPDF,
-    required VoidCallback onExportExcel,
+    VoidCallback? onExportPDF,
+    VoidCallback? onExportExcel,
   }) {
     return Card(
       elevation: 2,
@@ -227,37 +271,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onExportPDF,
-                        icon: const Icon(Icons.picture_as_pdf, size: 16),
-                        label: const Text('PDF'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onExportExcel,
-                        icon: const Icon(Icons.table_chart, size: 16),
-                        label: const Text('Excel'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                if (onExportPDF != null || onExportExcel != null)
+                  Consumer<AuthProvider>(
+                    builder: (context, authProvider, child) {
+                      final canExport = authProvider.currentUser?.hasPermission('export_reports') ?? false;
+
+                      return Row(
+                        children: [
+                          if (onExportPDF != null)
+                            Expanded(
+                              child: Tooltip(
+                                message: canExport ? '' : 'Admin access only',
+                                child: OutlinedButton.icon(
+                                  onPressed: canExport ? onExportPDF : null,
+                                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                                  label: const Text('PDF'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (onExportPDF != null && onExportExcel != null)
+                            const SizedBox(width: 8),
+                          if (onExportExcel != null)
+                            Expanded(
+                              child: Tooltip(
+                                message: canExport ? '' : 'Admin access only',
+                                child: OutlinedButton.icon(
+                                  onPressed: canExport ? onExportExcel : null,
+                                  icon: const Icon(Icons.table_chart, size: 16),
+                                  label: const Text('Excel'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
               ],
             ),
           ],
@@ -300,16 +360,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           _buildReportItem('Unique Customers',
               report['unique_customers'].toString()),
           _buildReportItem('Subtotal',
-              '\$${(report['subtotal'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['subtotal'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Discount',
-              '\$${(report['total_discount'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_discount'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Tax',
-              '\$${(report['total_tax'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_tax'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Sales',
-              '\$${(report['total_sales'] as num).toStringAsFixed(2)}',
+              '$_currencySymbol${(report['total_sales'] as num).toStringAsFixed(2)}',
               isHighlighted: true),
           _buildReportItem('Average Sale',
-              '\$${(report['average_sale'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['average_sale'] as num).toStringAsFixed(2)}'),
         ],
       );
     } catch (e) {
@@ -355,16 +415,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           _buildReportItem('Unique Suppliers',
               report['unique_suppliers'].toString()),
           _buildReportItem('Subtotal',
-              '\$${(report['subtotal'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['subtotal'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Discount',
-              '\$${(report['total_discount'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_discount'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Tax',
-              '\$${(report['total_tax'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_tax'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Total Purchases',
-              '\$${(report['total_purchases'] as num).toStringAsFixed(2)}',
+              '$_currencySymbol${(report['total_purchases'] as num).toStringAsFixed(2)}',
               isHighlighted: true),
           _buildReportItem('Average Purchase',
-              '\$${(report['average_purchase'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['average_purchase'] as num).toStringAsFixed(2)}'),
         ],
       );
     } catch (e) {
@@ -538,16 +598,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           _buildReportItem('Date Range',
               '${_formatDate(dateRange.start)} - ${_formatDate(dateRange.end)}'),
           _buildReportItem('Total Revenue',
-              '\$${(report['total_revenue'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_revenue'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Cost of Goods Sold',
-              '\$${(report['total_cogs'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_cogs'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Gross Profit',
-              '\$${(report['gross_profit'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['gross_profit'] as num).toStringAsFixed(2)}'),
           _buildReportItem('Discounts Given',
-              '\$${(report['total_discounts'] as num).toStringAsFixed(2)}'),
+              '$_currencySymbol${(report['total_discounts'] as num).toStringAsFixed(2)}'),
           _buildReportItem(
             'Net Profit',
-            '\$${netProfit.toStringAsFixed(2)}',
+            '$_currencySymbol${netProfit.toStringAsFixed(2)}',
             isHighlighted: true,
             color: isProfit ? Colors.green : Colors.red,
           ),
@@ -712,7 +772,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             const Text('Total Value',
                                 style: TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 8),
-                            Text('\$${totalValue.toStringAsFixed(2)}',
+                            Text('$_currencySymbol${totalValue.toStringAsFixed(2)}',
                                 style: const TextStyle(fontSize: 24)),
                           ],
                         ),
@@ -762,7 +822,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           DataCell(Text(item['name'] ?? '')),
                           DataCell(Text(item['sku'] ?? '')),
                           DataCell(Text(stock.toStringAsFixed(1))),
-                          DataCell(Text('\$${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                          DataCell(Text('$_currencySymbol${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                         ],
                       );
                     }).toList(),

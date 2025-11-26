@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../../../../services/invoice/invoice_settings_service.dart';
 
 class HeaderSettingsTab extends StatefulWidget {
@@ -151,9 +153,41 @@ class _HeaderSettingsTabState extends State<HeaderSettingsTab> {
 
       if (result == null || result.files.isEmpty) return;
 
+      final pickedFile = result.files.first;
+      if (pickedFile.path == null) {
+        throw Exception('Invalid file path');
+      }
+
+      // Copy logo to Application Support directory for sandbox compatibility
+      final appDataDir = await getApplicationSupportDirectory();
+      final logosDir = Directory(path.join(appDataDir.path, 'InventoryManagementSystem', 'logos'));
+
+      // Create directory if it doesn't exist
+      if (!await logosDir.exists()) {
+        await logosDir.create(recursive: true);
+      }
+
+      // Create unique filename based on invoice type
+      final extension = path.extension(pickedFile.path!);
+      final fileName = 'logo_${widget.invoiceType.toLowerCase()}$extension';
+      final destinationPath = path.join(logosDir.path, fileName);
+
+      // Copy file to app data directory
+      final sourceFile = File(pickedFile.path!);
+      await sourceFile.copy(destinationPath);
+
       setState(() {
-        _logoPath = result.files.first.path;
+        _logoPath = destinationPath;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logo selected. Click "Save Settings" to apply.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

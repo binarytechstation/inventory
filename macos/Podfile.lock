@@ -1,0 +1,41 @@
+PODS:
+  - file_picker (0.0.1):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - objective_c (0.0.1):
+    - FlutterMacOS
+  - printing (1.0.0):
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - objective_c (from `Flutter/ephemeral/.symlinks/plugins/objective_c/macos`)
+  - printing (from `Flutter/ephemeral/.symlinks/plugins/printing/macos`)
+  - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
+
+EXTERNAL SOURCES:
+  file_picker:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_picker/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  objective_c:
+    :path: Flutter/ephemeral/.symlinks/plugins/objective_c/macos
+  printing:
+    :path: Flutter/ephemeral/.symlinks/plugins/printing/macos
+  shared_preferences_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
+
+SPEC CHECKSUMS:
+  file_picker: e716a70a9fe5fd9e09ebc922d7541464289443af
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  objective_c: e5f8194456e8fc943e034d1af00510a1bc29c067
+  printing: 1dd6a1fce2209ec240698e2439a4adbb9b427637
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+
+PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+
+COCOAPODS: 1.16.2

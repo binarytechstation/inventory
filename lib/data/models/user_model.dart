@@ -98,17 +98,49 @@ class UserModel {
   }
 
   bool hasPermission(String permission) {
-    switch (role) {
+    switch (role.toLowerCase()) {
       case 'admin':
-        return true; // Admin has all permissions
+        return true; // Admin has full access to everything
+
       case 'manager':
-        return permission != 'manage_users' && permission != 'manage_settings';
+        // Manager can: manage products, create/edit transactions, view reports, export reports
+        // Manager CANNOT: manage users, change system settings
+        return [
+          'view_products', 'create_product', 'edit_product', 'delete_product',
+          'view_transactions', 'create_sale', 'create_purchase', 'edit_transaction', 'delete_transaction',
+          'view_customers', 'create_customer', 'edit_customer', 'delete_customer',
+          'view_suppliers', 'create_supplier', 'edit_supplier', 'delete_supplier',
+          'view_reports', 'export_reports',
+          'print_invoice',
+        ].contains(permission);
+
       case 'cashier':
-        return permission == 'create_sale' || permission == 'view_products' || permission == 'print_receipt';
+        // Cashier can: create sales, view products only
+        // Cashier CANNOT: access purchases, edit/delete anything, view reports, manage customers/suppliers
+        return [
+          'view_products',
+          'create_sale',
+          'view_transactions',
+        ].contains(permission);
+
       case 'viewer':
-        return permission.startsWith('view_');
+        // Viewer can: only view, no create/edit/delete/print
+        return [
+          'view_products',
+          'view_transactions',
+          'view_customers',
+          'view_suppliers',
+          'view_reports',
+          'view_dashboard',
+        ].contains(permission);
+
       default:
         return false;
     }
   }
+
+  bool get isAdmin => role.toLowerCase() == 'admin';
+  bool get isManager => role.toLowerCase() == 'manager';
+  bool get isCashier => role.toLowerCase() == 'cashier';
+  bool get isViewer => role.toLowerCase() == 'viewer';
 }

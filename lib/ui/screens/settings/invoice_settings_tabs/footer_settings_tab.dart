@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../../../../services/invoice/invoice_settings_service.dart';
 
 class FooterSettingsTab extends StatefulWidget {
@@ -156,9 +158,41 @@ class _FooterSettingsTabState extends State<FooterSettingsTab> {
 
       if (result == null || result.files.isEmpty) return;
 
+      final pickedFile = result.files.first;
+      if (pickedFile.path == null) {
+        throw Exception('Invalid file path');
+      }
+
+      // Copy signature to Application Support directory for sandbox compatibility
+      final appDataDir = await getApplicationSupportDirectory();
+      final signaturesDir = Directory(path.join(appDataDir.path, 'InventoryManagementSystem', 'signatures'));
+
+      // Create directory if it doesn't exist
+      if (!await signaturesDir.exists()) {
+        await signaturesDir.create(recursive: true);
+      }
+
+      // Create unique filename based on invoice type
+      final extension = path.extension(pickedFile.path!);
+      final fileName = 'signature_${widget.invoiceType.toLowerCase()}$extension';
+      final destinationPath = path.join(signaturesDir.path, fileName);
+
+      // Copy file to app data directory
+      final sourceFile = File(pickedFile.path!);
+      await sourceFile.copy(destinationPath);
+
       setState(() {
-        _signatureImagePath = result.files.first.path;
+        _signatureImagePath = destinationPath;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signature selected. Click "Save Settings" to apply.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,9 +212,41 @@ class _FooterSettingsTabState extends State<FooterSettingsTab> {
 
       if (result == null || result.files.isEmpty) return;
 
+      final pickedFile = result.files.first;
+      if (pickedFile.path == null) {
+        throw Exception('Invalid file path');
+      }
+
+      // Copy stamp to Application Support directory for sandbox compatibility
+      final appDataDir = await getApplicationSupportDirectory();
+      final stampsDir = Directory(path.join(appDataDir.path, 'InventoryManagementSystem', 'stamps'));
+
+      // Create directory if it doesn't exist
+      if (!await stampsDir.exists()) {
+        await stampsDir.create(recursive: true);
+      }
+
+      // Create unique filename based on invoice type
+      final extension = path.extension(pickedFile.path!);
+      final fileName = 'stamp_${widget.invoiceType.toLowerCase()}$extension';
+      final destinationPath = path.join(stampsDir.path, fileName);
+
+      // Copy file to app data directory
+      final sourceFile = File(pickedFile.path!);
+      await sourceFile.copy(destinationPath);
+
       setState(() {
-        _stampImagePath = result.files.first.path;
+        _stampImagePath = destinationPath;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Stamp selected. Click "Save Settings" to apply.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/customer_model.dart';
 import '../../../services/customer/customer_service.dart';
+import '../../providers/auth_provider.dart';
 import 'customer_form_screen.dart';
 
 class CustomersScreen extends StatefulWidget {
@@ -277,38 +279,54 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                     ),
                                 ],
                               ),
-                              trailing: PopupMenuButton(
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('Edit'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, size: 20, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Delete', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (value) {
-                                  if (value == 'edit') {
-                                    _navigateToEditCustomer(customer);
-                                  } else if (value == 'delete') {
-                                    _deleteCustomer(customer);
+                              trailing: Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  final canEdit = authProvider.currentUser?.hasPermission('edit_customer') ?? false;
+
+                                  if (!canEdit) {
+                                    return const SizedBox.shrink();
                                   }
+
+                                  return PopupMenuButton(
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _navigateToEditCustomer(customer);
+                                      } else if (value == 'delete') {
+                                        _deleteCustomer(customer);
+                                      }
+                                    },
+                                  );
                                 },
                               ),
-                              onTap: () => _navigateToEditCustomer(customer),
+                              onTap: () {
+                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                                final canEdit = authProvider.currentUser?.hasPermission('edit_customer') ?? false;
+                                if (canEdit) {
+                                  _navigateToEditCustomer(customer);
+                                }
+                              },
                             ),
                           );
                         },
@@ -316,10 +334,31 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddCustomer,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Customer'),
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final canCreate = authProvider.currentUser?.hasPermission('create_customer') ?? false;
+
+          if (!canCreate) {
+            return Tooltip(
+              message: 'Admin access only',
+              child: Opacity(
+                opacity: 0.5,
+                child: FloatingActionButton.extended(
+                  onPressed: null,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Customer'),
+                  backgroundColor: Colors.grey,
+                ),
+              ),
+            );
+          }
+
+          return FloatingActionButton.extended(
+            onPressed: _navigateToAddCustomer,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Customer'),
+          );
+        },
       ),
     );
   }

@@ -28,5 +28,18 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Privacy Descriptions for File Access -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photo library to select and upload images for products, invoices, and profile pictures.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>This app needs access to your Desktop folder to save and load inventory files, backups, and exported reports.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>This app needs access to your Documents folder to save invoices, reports, backups, and other inventory-related files.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>This app needs access to your Downloads folder to save exported PDF invoices, Excel reports, and backup files.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>This app needs access to removable volumes to save backups and export data to external drives.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>This app needs file access to manage your inventory database, images, and documents.</string>
 </dict>
 </plist>

@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import '../../data/database/database_helper.dart';
+import '../../core/utils/file_save_helper.dart';
 
 class InvoiceService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -177,6 +178,14 @@ class InvoiceService {
     final bodySettings = settings['body'] as Map<String, dynamic>?;
     final profile = settings['profile'] as Map<String, dynamic>?;
 
+    // Get currency symbol from transaction (preserves historical currency)
+    // Use 'Tk' for PDF compatibility instead of '৳' which has font rendering issues
+    String currencySymbol = transaction['currency_symbol'] as String? ?? 'Tk';
+    // Replace ৳ with Tk for PDF rendering
+    if (currencySymbol == '৳') {
+      currencySymbol = 'Tk';
+    }
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -198,16 +207,16 @@ class InvoiceService {
               pw.SizedBox(height: 20),
 
               // Items table
-              _buildItemsTable(transaction, bodySettings),
+              _buildItemsTable(transaction, bodySettings, currencySymbol),
               pw.SizedBox(height: 20),
 
               // Totals
-              _buildTotals(transaction, bodySettings),
+              _buildTotals(transaction, bodySettings, currencySymbol),
 
               // Footer
               pw.Spacer(),
               if (footerSettings?['show_footer_text'] == 1)
-                _buildFooter(footerSettings),
+                _buildFooter(footerSettings, bodySettings, transaction),
             ],
           );
         },
@@ -242,41 +251,97 @@ class InvoiceService {
     final showInvoiceTitle = headerSettings?['show_invoice_title'] == 1;
     final invoiceTitle = headerSettings?['invoice_title'] as String? ?? 'INVOICE';
 
+    // Logo settings
+    final showLogo = headerSettings?['show_company_logo'] == 1;
+    final logoPath = headerSettings?['logo_path'] as String?;
+    final logoWidth = (headerSettings?['logo_width'] as int?) ?? 150;
+    final logoHeight = (headerSettings?['logo_height'] as int?) ?? 80;
+    final logoPosition = headerSettings?['logo_position'] as String? ?? 'LEFT';
+
+    // Load logo image if available
+    pw.ImageProvider? logoImage;
+    if (showLogo && logoPath != null && logoPath.isNotEmpty) {
+      try {
+        final logoFile = File(logoPath);
+        if (logoFile.existsSync()) {
+          logoImage = pw.MemoryImage(logoFile.readAsBytesSync());
+        }
+      } catch (e) {
+        // Logo loading failed, continue without logo
+        print('Error loading logo: $e');
+      }
+    }
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  companyName,
-                  style: pw.TextStyle(
-                    fontSize: 24,
-                    fontWeight: pw.FontWeight.bold,
+            // Left side: Logo (if position is LEFT) and Company info
+            pw.Expanded(
+              flex: 2,
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Logo on the left
+                  if (logoImage != null && logoPosition == 'LEFT') ...[
+                    pw.Container(
+                      width: logoWidth.toDouble(),
+                      height: logoHeight.toDouble(),
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                    ),
+                    pw.SizedBox(width: 15),
+                  ],
+                  // Company details
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          companyName,
+                          style: pw.TextStyle(
+                            fontSize: 24,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        if (companyAddress.isNotEmpty)
+                          pw.Text(companyAddress, style: const pw.TextStyle(fontSize: 10)),
+                        if (companyPhone.isNotEmpty)
+                          pw.Text('Tel: $companyPhone', style: const pw.TextStyle(fontSize: 10)),
+                        if (companyEmail.isNotEmpty)
+                          pw.Text('Email: $companyEmail', style: const pw.TextStyle(fontSize: 10)),
+                      ],
+                    ),
                   ),
-                ),
-                if (companyAddress.isNotEmpty)
-                  pw.Text(companyAddress, style: const pw.TextStyle(fontSize: 10)),
-                if (companyPhone.isNotEmpty)
-                  pw.Text('Tel: $companyPhone', style: const pw.TextStyle(fontSize: 10)),
-                if (companyEmail.isNotEmpty)
-                  pw.Text('Email: $companyEmail', style: const pw.TextStyle(fontSize: 10)),
+                ],
+              ),
+            ),
+            // Right side: Invoice title or logo
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                if (logoImage != null && logoPosition == 'RIGHT')
+                  pw.Container(
+                    width: logoWidth.toDouble(),
+                    height: logoHeight.toDouble(),
+                    child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                  ),
+                if (showInvoiceTitle)
+                  pw.Text(
+                    invoiceTitle,
+                    style: pw.TextStyle(
+                      fontSize: 28,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue,
+                    ),
+                  ),
               ],
             ),
-            if (showInvoiceTitle)
-              pw.Text(
-                invoiceTitle,
-                style: pw.TextStyle(
-                  fontSize: 28,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue,
-                ),
-              ),
           ],
         ),
+        pw.SizedBox(height: 10),
         pw.Divider(thickness: 2),
       ],
     );
@@ -360,6 +425,7 @@ class InvoiceService {
   pw.Widget _buildItemsTable(
     Map<String, dynamic> transaction,
     Map<String, dynamic>? bodySettings,
+    String currencySymbol,
   ) {
     final lines = transaction['lines'] as List<Map<String, dynamic>>;
 
@@ -391,13 +457,13 @@ class InvoiceService {
               _buildTableCell('${index + 1}'),
               _buildTableCell(line['product_name'] as String),
               _buildTableCell('${line['quantity']} ${line['unit'] ?? ''}'),
-              _buildTableCell('\$${(line['unit_price'] as num).toStringAsFixed(2)}'),
+              _buildTableCell('$currencySymbol${(line['unit_price'] as num).toStringAsFixed(2)}'),
               if (bodySettings?['show_discount_column'] == 1)
-                _buildTableCell('\$${(line['discount_amount'] as num).toStringAsFixed(2)}'),
+                _buildTableCell('$currencySymbol${(line['discount_amount'] as num).toStringAsFixed(2)}'),
               if (bodySettings?['show_tax_column'] == 1)
-                _buildTableCell('\$${(line['tax_amount'] as num).toStringAsFixed(2)}'),
+                _buildTableCell('$currencySymbol${(line['tax_amount'] as num).toStringAsFixed(2)}'),
               _buildTableCell(
-                '\$${(line['line_total'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(line['line_total'] as num).toStringAsFixed(2)}',
                 isBold: true,
               ),
             ],
@@ -426,6 +492,7 @@ class InvoiceService {
   pw.Widget _buildTotals(
     Map<String, dynamic> transaction,
     Map<String, dynamic>? bodySettings,
+    String currencySymbol,
   ) {
     final subtotal = (transaction['subtotal'] as num).toDouble();
     final discount = (transaction['discount_amount'] as num).toDouble();
@@ -440,15 +507,15 @@ class InvoiceService {
           child: pw.Column(
             children: [
               if (bodySettings?['show_subtotal'] == 1)
-                _buildTotalRow('Subtotal:', '\$${subtotal.toStringAsFixed(2)}'),
+                _buildTotalRow('Subtotal:', '$currencySymbol${subtotal.toStringAsFixed(2)}'),
               if (bodySettings?['show_total_discount'] == 1)
-                _buildTotalRow('Discount:', '-\$${discount.toStringAsFixed(2)}'),
+                _buildTotalRow('Discount:', '-$currencySymbol${discount.toStringAsFixed(2)}'),
               if (bodySettings?['show_total_tax'] == 1)
-                _buildTotalRow('Tax:', '\$${tax.toStringAsFixed(2)}'),
+                _buildTotalRow('Tax:', '$currencySymbol${tax.toStringAsFixed(2)}'),
               pw.Divider(thickness: 2),
               _buildTotalRow(
                 bodySettings?['grand_total_label'] as String? ?? 'Total:',
-                '\$${total.toStringAsFixed(2)}',
+                '$currencySymbol${total.toStringAsFixed(2)}',
                 isBold: true,
                 fontSize: 14,
               ),
@@ -491,11 +558,43 @@ class InvoiceService {
   }
 
   /// Build footer
-  pw.Widget _buildFooter(Map<String, dynamic>? footerSettings) {
+  pw.Widget _buildFooter(
+    Map<String, dynamic>? footerSettings,
+    Map<String, dynamic>? bodySettings,
+    Map<String, dynamic> transaction,
+  ) {
     final footerText = footerSettings?['footer_text'] as String? ??
                        'Thank you for your business!';
     final showTerms = footerSettings?['show_terms_and_conditions'] == 1;
     final terms = footerSettings?['terms_and_conditions'] as String?;
+
+    // QR code settings are in body settings
+    final showQR = bodySettings?['show_qr_code'] == 1;
+    final qrContent = bodySettings?['qr_code_content'] as String? ?? '{invoice_number}';
+    final qrSize = (bodySettings?['qr_code_size'] as int?) ?? 100;
+
+    // Generate QR code if enabled
+    pw.Widget? qrWidget;
+    if (showQR) {
+      try {
+        // Replace placeholders in QR content
+        String qrText = qrContent
+            .replaceAll('{invoice_number}', transaction['invoice_number'] as String)
+            .replaceAll('{total}', (transaction['total_amount'] as num).toStringAsFixed(2))
+            .replaceAll('{date}', DateFormat('dd/MM/yyyy').format(DateTime.parse(transaction['transaction_date'] as String)));
+
+        // Generate QR code using BarcodeWidget
+        qrWidget = pw.BarcodeWidget(
+          barcode: pw.Barcode.qrCode(),
+          data: qrText,
+          width: qrSize.toDouble(),
+          height: qrSize.toDouble(),
+        );
+      } catch (e) {
+        // QR generation failed, continue without QR code
+        print('Error generating QR code: $e');
+      }
+    }
 
     return pw.Column(
       children: [
@@ -509,16 +608,41 @@ class InvoiceService {
           pw.Text(terms, style: const pw.TextStyle(fontSize: 8)),
           pw.SizedBox(height: 10),
         ],
-        pw.Text(
-          footerText,
-          style: const pw.TextStyle(fontSize: 10),
-          textAlign: pw.TextAlign.center,
-        ),
-        pw.SizedBox(height: 5),
-        pw.Text(
-          'Generated on ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
-          style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-          textAlign: pw.TextAlign.center,
+        // Footer text and QR code side by side
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    footerText,
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Text(
+                    'Generated on ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
+                    style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                  ),
+                ],
+              ),
+            ),
+            if (qrWidget != null) ...[
+              pw.SizedBox(width: 20),
+              pw.Column(
+                children: [
+                  qrWidget,
+                  pw.SizedBox(height: 5),
+                  pw.Text(
+                    'Scan QR Code',
+                    style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -526,21 +650,24 @@ class InvoiceService {
 
   /// Save PDF to file
   Future<File> _savePDFToFile(pw.Document pdf, String invoiceNumber) async {
-    final dir = Platform.isWindows
-        ? '${Platform.environment['USERPROFILE']}\\Documents\\Invoices'
-        : '/tmp/Invoices';
+    final fileName = '$invoiceNumber-${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final pdfBytes = await pdf.save();
 
-    final directory = Directory(dir);
-    if (!await directory.exists()) {
-      await directory.create(recursive: true);
+    // Use FileSaveHelper for cross-platform saving
+    final savedPath = await FileSaveHelper.savePdf(
+      pdfBytes: pdfBytes,
+      fileName: fileName,
+    );
+
+    if (savedPath == null) {
+      // User cancelled or error occurred - save to temp directory as fallback
+      final tempPath = await FileSaveHelper.getTempFilePath(fileName);
+      final file = File(tempPath);
+      await file.writeAsBytes(pdfBytes);
+      return file;
     }
 
-    final fileName = '$invoiceNumber-${DateTime.now().millisecondsSinceEpoch}.pdf';
-    final file = File('$dir\\$fileName');
-
-    await file.writeAsBytes(await pdf.save());
-
-    return file;
+    return File(savedPath);
   }
 
   /// Print invoice (generates PDF for manual printing)

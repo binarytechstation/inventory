@@ -62,9 +62,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         throw Exception('Invalid file path');
       }
 
-      // Get app data directory
-      final appDataDir = await getApplicationDocumentsDirectory();
-      final profilePicturesDir = Directory(path.join(appDataDir.path, 'profile_pictures'));
+      // Get app data directory (use Application Support on macOS for sandbox compatibility)
+      final appDataDir = await getApplicationSupportDirectory();
+      final profilePicturesDir = Directory(path.join(appDataDir.path, 'InventoryManagementSystem', 'profile_pictures'));
 
       // Create directory if it doesn't exist
       if (!await profilePicturesDir.exists()) {

@@ -214,6 +214,7 @@ class AuthService {
     try {
       final db = await _dbHelper.database;
 
+      // Show ALL users (both active and inactive)
       final results = await db.query(
         'users',
         orderBy: 'created_at DESC',
@@ -245,8 +246,8 @@ class AuthService {
     }
   }
 
-  /// Delete user (soft delete by setting is_active to false)
-  Future<bool> deleteUser(int userId) async {
+  /// Deactivate user (soft delete by setting is_active to false)
+  Future<bool> deactivateUser(int userId) async {
     try {
       final db = await _dbHelper.database;
 
@@ -256,6 +257,25 @@ class AuthService {
           'is_active': 0,
           'updated_at': DateTime.now().toIso8601String(),
         },
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+
+      return true;
+    } catch (e) {
+      print('Deactivate user error: $e');
+      return false;
+    }
+  }
+
+  /// Delete user permanently (hard delete from database)
+  /// WARNING: This permanently removes the user and cannot be undone
+  Future<bool> deleteUser(int userId) async {
+    try {
+      final db = await _dbHelper.database;
+
+      await db.delete(
+        'users',
         where: 'id = ?',
         whereArgs: [userId],
       );

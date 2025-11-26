@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:universal_io/io.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import '../constants/app_constants.dart';
@@ -16,11 +17,27 @@ class PathHelper {
 
   /// Initialize application paths
   /// On Windows: uses %PROGRAMDATA%\InventoryManagementSystem or %LOCALAPPDATA%\InventoryManagementSystem
+  /// On Web: uses browser's IndexedDB
   Future<void> initialize() async {
     if (_initialized) return;
 
     String baseDir;
 
+    if (kIsWeb) {
+      // For web, use a virtual path (IndexedDB will handle storage)
+      baseDir = '/web_storage/InventoryManagementSystem';
+
+      // Set paths in AppConstants
+      AppConstants.appDataPath = baseDir;
+      AppConstants.dbPath = 'inventory_db'; // Just a name for IndexedDB
+      AppConstants.licensePath = path.join(baseDir, AppConstants.licenseFileName);
+      AppConstants.backupPath = path.join(baseDir, AppConstants.backupFolderName);
+
+      _initialized = true;
+      return;
+    }
+
+    // Desktop platforms
     if (Platform.isWindows) {
       // Try to use PROGRAMDATA first (for all users), fallback to LOCALAPPDATA (current user)
       final programData = Platform.environment['PROGRAMDATA'];
@@ -51,7 +68,7 @@ class PathHelper {
       throw UnsupportedError('Platform not supported');
     }
 
-    // Create directories if they don't exist
+    // Create directories if they don't exist (not needed for web)
     final baseDirectory = Directory(baseDir);
     if (!await baseDirectory.exists()) {
       await baseDirectory.create(recursive: true);
@@ -105,12 +122,20 @@ class PathHelper {
 
   /// Check if database exists
   Future<bool> databaseExists() async {
+    if (kIsWeb) {
+      // On web, database always "exists" in IndexedDB
+      return true;
+    }
     final file = File(getDbPath());
     return await file.exists();
   }
 
   /// Check if license exists
   Future<bool> licenseExists() async {
+    if (kIsWeb) {
+      // On web, check local storage or return false
+      return false;
+    }
     final file = File(getLicensePath());
     return await file.exists();
   }

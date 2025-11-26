@@ -1,8 +1,11 @@
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../data/database/database_helper.dart';
+import '../invoice/invoice_settings_service.dart';
+import '../currency/currency_service.dart';
 
 class TransactionService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  final InvoiceSettingsService _invoiceSettingsService = InvoiceSettingsService();
+  final CurrencyService _currencyService = CurrencyService();
 
   /// Create a new transaction (BUY, SELL, or RETURN)
   Future<int> createTransaction({
@@ -21,9 +24,14 @@ class TransactionService {
   }) async {
     final db = await _dbHelper.database;
 
+    // Generate invoice number BEFORE starting transaction to avoid deadlock
+    final invoiceNo = await _generateInvoiceNumberBeforeTransaction(type);
+
+    // Get current currency settings BEFORE starting transaction to avoid deadlock
+    final currencyCode = await _currencyService.getCurrencyCode();
+    final currencySymbol = await _currencyService.getCurrencySymbol();
+
     return await db.transaction((txn) async {
-      // Generate invoice number
-      final invoiceNo = await _generateInvoiceNumber(txn, type);
 
       // Get party name
       String? partyName;
@@ -50,20 +58,28 @@ class TransactionService {
         'payment_mode': paymentMode,
         'status': status,
         'notes': notes,
+        'currency_code': currencyCode,
+        'currency_symbol': currencySymbol,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       });
 
       // Insert transaction lines and update inventory
       for (final item in items) {
-        // Get product details
-        final products = await txn.query('products', where: 'id = ?', whereArgs: [item['product_id']]);
-        final productName = products.isNotEmpty ? products.first['name'] as String : 'Unknown';
+        // Get product details using lot-based schema
+        final int productId = item['product_id'];
+        final int lotId = item['lot_id'] ?? 1; // Default to lot 1 if not specified
+
+        final products = await txn.query('products',
+          where: 'product_id = ? AND lot_id = ?',
+          whereArgs: [productId, lotId]);
+        final productName = products.isNotEmpty ? products.first['product_name'] as String : 'Unknown';
         final productUnit = products.isNotEmpty ? products.first['unit'] as String? : 'piece';
 
         await txn.insert('transaction_lines', {
           'transaction_id': transactionId,
-          'product_id': item['product_id'],
+          'product_id': productId,
+          'lot_id': lotId,
           'product_name': productName,
           'quantity': item['quantity'],
           'unit': productUnit,
@@ -75,26 +91,42 @@ class TransactionService {
 
         // Update inventory based on transaction type
         if (type == 'BUY') {
-          // Create product batch for purchase
-          await txn.insert('product_batches', {
-            'product_id': item['product_id'],
-            'purchase_price': item['unit_price'],
-            'quantity_added': item['quantity'],
-            'quantity_remaining': item['quantity'],
-            'purchase_date': date.toIso8601String(),
-            'supplier_id': partyId,
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          // Increase stock count for purchase
+          await txn.rawUpdate('''
+            UPDATE stock
+            SET count = count + ?,
+                last_stock_update = ?,
+                updated_at = ?
+            WHERE product_id = ? AND lot_id = ?
+          ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'SELL') {
-          // Reduce stock using FIFO method
-          await _reduceStock(txn, item['product_id'], item['quantity']);
+          // Reduce stock count for sale
+          await txn.rawUpdate('''
+            UPDATE stock
+            SET count = count - ?,
+                last_stock_update = ?,
+                updated_at = ?
+            WHERE product_id = ? AND lot_id = ?
+          ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'RETURN') {
           if (partyType == 'customer') {
             // Customer return - add stock back
-            await _addStockFromReturn(txn, item['product_id'], item['quantity'], partyId);
+            await txn.rawUpdate('''
+              UPDATE stock
+              SET count = count + ?,
+                  last_stock_update = ?,
+                  updated_at = ?
+              WHERE product_id = ? AND lot_id = ?
+            ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
           } else {
             // Supplier return - reduce stock
-            await _reduceStock(txn, item['product_id'], item['quantity']);
+            await txn.rawUpdate('''
+              UPDATE stock
+              SET count = count - ?,
+                  last_stock_update = ?,
+                  updated_at = ?
+              WHERE product_id = ? AND lot_id = ?
+            ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
           }
         }
       }
@@ -116,70 +148,34 @@ class TransactionService {
     });
   }
 
-  /// Generate invoice number based on transaction type
-  Future<String> _generateInvoiceNumber(Transaction txn, String type) async {
-    final prefix = type == 'BUY' ? 'PO' : (type == 'SELL' ? 'INV' : 'RET');
-    final year = DateTime.now().year;
+  /// Generate invoice number based on transaction type using invoice settings
+  /// This is called BEFORE starting a database transaction to avoid deadlock
+  Future<String> _generateInvoiceNumberBeforeTransaction(String type) async {
+    // Map transaction type to invoice type used in settings
+    final invoiceType = type == 'BUY' ? 'PURCHASE' : (type == 'SELL' ? 'SALE' : 'RETURN');
 
-    final result = await txn.rawQuery('''
-      SELECT COUNT(*) as count
-      FROM transactions
-      WHERE transaction_type = ? AND strftime('%Y', transaction_date) = ?
-    ''', [type, year.toString()]);
+    try {
+      // Use InvoiceSettingsService to generate invoice number
+      return await _invoiceSettingsService.generateInvoiceNumber(invoiceType);
+    } catch (e) {
+      // Fallback to old hardcoded format if settings not found
+      final db = await _dbHelper.database;
+      final prefix = type == 'BUY' ? 'PO' : (type == 'SELL' ? 'INV' : 'RET');
+      final year = DateTime.now().year;
 
-    final count = (result.first['count'] as int?) ?? 0;
-    final number = (count + 1).toString().padLeft(5, '0');
+      final result = await db.rawQuery('''
+        SELECT COUNT(*) as count
+        FROM transactions
+        WHERE transaction_type = ? AND strftime('%Y', transaction_date) = ?
+      ''', [type, year.toString()]);
 
-    return '$prefix-$year-$number';
-  }
+      final count = (result.first['count'] as int?) ?? 0;
+      final number = (count + 1).toString().padLeft(5, '0');
 
-  /// Reduce stock using FIFO (First In, First Out) method
-  Future<void> _reduceStock(Transaction txn, int productId, double quantity) async {
-    var remainingQty = quantity;
-
-    // Get batches ordered by date (FIFO)
-    final batches = await txn.query(
-      'product_batches',
-      where: 'product_id = ? AND quantity_remaining > 0',
-      whereArgs: [productId],
-      orderBy: 'purchase_date ASC',
-    );
-
-    for (final batch in batches) {
-      if (remainingQty <= 0) break;
-
-      final batchId = batch['id'] as int;
-      final available = (batch['quantity_remaining'] as num).toDouble();
-      final toReduce = remainingQty > available ? available : remainingQty;
-
-      await txn.update(
-        'product_batches',
-        {'quantity_remaining': available - toReduce},
-        where: 'id = ?',
-        whereArgs: [batchId],
-      );
-
-      remainingQty -= toReduce;
-    }
-
-    if (remainingQty > 0) {
-      throw Exception('Insufficient stock for product ID $productId. Short by $remainingQty units.');
+      return '$prefix-$year-$number';
     }
   }
 
-  /// Add stock back from return
-  Future<void> _addStockFromReturn(Transaction txn, int productId, double quantity, int supplierId) async {
-    // For returns, add as a new batch
-    await txn.insert('product_batches', {
-      'product_id': productId,
-      'purchase_price': 0, // Return items
-      'quantity_added': quantity,
-      'quantity_remaining': quantity,
-      'purchase_date': DateTime.now().toIso8601String(),
-      'supplier_id': supplierId,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
 
   /// Get all transactions with filters
   Future<List<Map<String, dynamic>>> getTransactions({
@@ -232,7 +228,24 @@ class TransactionService {
       orderBy: '$sortBy $sortOrder',
     );
 
-    return transactions;
+    // Add product names for each transaction for search functionality
+    final enrichedTransactions = <Map<String, dynamic>>[];
+    for (final transaction in transactions) {
+      final txnMap = Map<String, dynamic>.from(transaction);
+
+      // Get product names for this transaction
+      final lines = await db.rawQuery('''
+        SELECT GROUP_CONCAT(p.product_name, ', ') as product_names
+        FROM transaction_lines tl
+        LEFT JOIN products p ON tl.product_id = p.product_id AND tl.lot_id = p.lot_id
+        WHERE tl.transaction_id = ?
+      ''', [transaction['id']]);
+
+      txnMap['product_names'] = lines.isNotEmpty ? (lines.first['product_names'] ?? '') : '';
+      enrichedTransactions.add(txnMap);
+    }
+
+    return enrichedTransactions;
   }
 
   /// Get transaction by ID with all details
@@ -355,18 +368,27 @@ class TransactionService {
       // Reverse inventory changes
       for (final line in lines) {
         final productId = line['product_id'] as int;
+        final lotId = line['lot_id'] as int? ?? 1;
         final quantity = (line['quantity'] as num).toDouble();
 
         if (type == 'BUY') {
-          // Remove the batch created by this transaction
-          await txn.delete(
-            'product_batches',
-            where: 'transaction_id = ?',
-            whereArgs: [transactionId],
-          );
+          // Reverse purchase - decrease stock
+          await txn.rawUpdate('''
+            UPDATE stock
+            SET count = count - ?,
+                last_stock_update = ?,
+                updated_at = ?
+            WHERE product_id = ? AND lot_id = ?
+          ''', [quantity, DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'SELL') {
-          // Add stock back (this is simplified; ideally track which batches were used)
-          await _addStockFromReturn(txn, productId, quantity, 0);
+          // Reverse sale - add stock back
+          await txn.rawUpdate('''
+            UPDATE stock
+            SET count = count + ?,
+                last_stock_update = ?,
+                updated_at = ?
+            WHERE product_id = ? AND lot_id = ?
+          ''', [quantity, DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         }
       }
 

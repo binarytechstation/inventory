@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../../../data/models/user_model.dart';
 import '../../../services/auth/auth_service.dart';
 import '../../../services/backup/backup_service.dart';
@@ -14,6 +16,7 @@ import 'activity_log_screen.dart';
 import 'invoice_settings_main_screen.dart';
 import 'invoice_activity_log_screen.dart';
 import 'advanced_invoice_settings_screen.dart';
+import 'currency_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -130,6 +133,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const BusinessInfoScreen()),
+              );
+            },
+          ),
+          _buildSettingsTile(
+            icon: Icons.currency_exchange,
+            title: 'Currency Settings',
+            subtitle: 'Change currency symbol and code',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CurrencySettingsScreen()),
               );
             },
           ),
@@ -357,19 +371,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
-      // Get Documents directory path
-      final backupDir = Platform.isWindows
-          ? '${Platform.environment['USERPROFILE']}\\Documents\\InventoryBackups'
-          : '/tmp/InventoryBackups';
+      // Create timestamped backup in temporary directory first
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+      final fileName = 'inventory_backup_$timestamp.db';
 
-      // Create directory if it doesn't exist
-      final dir = Directory(backupDir);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
+      // Create backup in temp directory
+      final tempDir = await getTemporaryDirectory();
+      final tempBackupPath = path.join(tempDir.path, fileName);
+      await _backupService.createBackup(tempBackupPath);
+
+      // On macOS/Linux, show save dialog; on Windows, save directly to Documents
+      String? finalBackupPath;
+
+      if (Platform.isMacOS || Platform.isLinux) {
+        // Use native save dialog for macOS/Linux
+        finalBackupPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Backup File',
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['db'],
+        );
+
+        if (finalBackupPath != null) {
+          // Copy from temp to user-selected location
+          final tempFile = File(tempBackupPath);
+          await tempFile.copy(finalBackupPath);
+          await tempFile.delete(); // Clean up temp file
+        } else {
+          // User cancelled - clean up temp file
+          final tempFile = File(tempBackupPath);
+          await tempFile.delete();
+        }
+      } else {
+        // Windows: Save directly to Documents folder
+        final backupDir = '${Platform.environment['USERPROFILE']}\\Documents\\InventoryBackups';
+        final dir = Directory(backupDir);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+
+        finalBackupPath = path.join(backupDir, fileName);
+        final tempFile = File(tempBackupPath);
+        await tempFile.copy(finalBackupPath);
+        await tempFile.delete();
       }
 
-      // Create timestamped backup
-      final backupPath = await _backupService.createTimestampedBackup(backupDir);
+      if (finalBackupPath == null) {
+        // User cancelled on macOS/Linux
+        if (!mounted) return;
+        Navigator.pop(context);
+        return;
+      }
+
+      final backupPath = finalBackupPath;
 
       // Close loading dialog
       if (!mounted) return;
@@ -464,7 +518,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // Pick backup file
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: ['db'],
         dialogTitle: 'Select Backup File',
       );
 
@@ -472,9 +527,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return; // User cancelled
       }
 
-      final backupFilePath = result.files.first.path;
-      if (backupFilePath == null) {
+      final pickedFile = result.files.first;
+      if (pickedFile.path == null) {
         throw Exception('Invalid file path');
+      }
+
+      // On macOS, copy the selected file to a safe location first
+      String backupFilePath;
+      if (Platform.isMacOS || Platform.isLinux) {
+        final tempDir = await getTemporaryDirectory();
+        final tempBackupPath = path.join(tempDir.path, 'restore_backup.db');
+
+        // Copy selected file to temp location
+        final sourceFile = File(pickedFile.path!);
+        await sourceFile.copy(tempBackupPath);
+        backupFilePath = tempBackupPath;
+      } else {
+        backupFilePath = pickedFile.path!;
       }
 
       // Verify it's a valid backup

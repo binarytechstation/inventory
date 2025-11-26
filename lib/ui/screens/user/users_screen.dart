@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/user_model.dart';
 import '../../../services/auth/auth_service.dart';
+import '../../providers/auth_provider.dart';
 import 'user_form_screen.dart';
 import 'change_password_screen.dart';
 
@@ -420,71 +422,79 @@ class _UsersScreenState extends State<UsersScreen> {
                                     ),
                                 ],
                               ),
-                              trailing: PopupMenuButton(
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('Edit'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'password',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.lock_reset, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('Change Password'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'toggle',
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          user.isActive ? Icons.block : Icons.check_circle,
-                                          size: 20,
-                                          color: user.isActive ? Colors.orange : Colors.green,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          user.isActive ? 'Deactivate' : 'Activate',
-                                          style: TextStyle(
-                                            color: user.isActive ? Colors.orange : Colors.green,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, size: 20, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Delete', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (value) {
-                                  if (value == 'edit') {
-                                    _navigateToEditUser(user);
-                                  } else if (value == 'password') {
-                                    _navigateToChangePassword(user);
-                                  } else if (value == 'toggle') {
-                                    _toggleUserStatus(user);
-                                  } else if (value == 'delete') {
-                                    _deleteUser(user);
+                              trailing: Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  // Only admin can manage users
+                                  if (authProvider.currentUser?.isAdmin != true) {
+                                    return const SizedBox.shrink();
                                   }
+                                  return PopupMenuButton(
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'password',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.lock_reset, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Change Password'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'toggle',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              user.isActive ? Icons.block : Icons.check_circle,
+                                              size: 20,
+                                              color: user.isActive ? Colors.orange : Colors.green,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              user.isActive ? 'Deactivate' : 'Activate',
+                                              style: TextStyle(
+                                                color: user.isActive ? Colors.orange : Colors.green,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _navigateToEditUser(user);
+                                      } else if (value == 'password') {
+                                        _navigateToChangePassword(user);
+                                      } else if (value == 'toggle') {
+                                        _toggleUserStatus(user);
+                                      } else if (value == 'delete') {
+                                        _deleteUser(user);
+                                      }
+                                    },
+                                  );
                                 },
                               ),
-                              onTap: () => _navigateToEditUser(user),
+                              onTap: null, // Disable tap for non-admin users
                             ),
                           );
                         },
@@ -492,10 +502,18 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddUser,
-        icon: const Icon(Icons.add),
-        label: const Text('Add User'),
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          // Only admin can add new users
+          if (authProvider.currentUser?.isAdmin != true) {
+            return const SizedBox.shrink();
+          }
+          return FloatingActionButton.extended(
+            onPressed: _navigateToAddUser,
+            icon: const Icon(Icons.add),
+            label: const Text('Add User'),
+          );
+        },
       ),
     );
   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../../../data/models/product_model.dart';
 import '../../../services/product/product_service.dart';
+import '../../../data/database/database_helper.dart';
 
 class ProductFormScreen extends StatefulWidget {
   final ProductModel? product;
@@ -15,67 +17,49 @@ class ProductFormScreen extends StatefulWidget {
 class _ProductFormScreenState extends State<ProductFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final ProductService _productService = ProductService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
+  // Controllers
   late TextEditingController _nameController;
-  late TextEditingController _skuController;
-  late TextEditingController _barcodeController;
+  late TextEditingController _lotNumberController;
   late TextEditingController _descriptionController;
-  late TextEditingController _unitController;
-  late TextEditingController _purchasePriceController;
-  late TextEditingController _sellingPriceController;
-  late TextEditingController _taxRateController;
+  late TextEditingController _itemController; // Pieces per lot
   late TextEditingController _reorderLevelController;
-  late TextEditingController _categoryController;
 
   bool _isLoading = false;
   bool get _isEditing => widget.product != null;
-  List<String> _categories = [];
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.product?.name ?? '');
-    _skuController = TextEditingController(text: widget.product?.sku ?? '');
-    _barcodeController = TextEditingController(text: widget.product?.barcode ?? '');
+    _lotNumberController = TextEditingController();
     _descriptionController = TextEditingController(text: widget.product?.description ?? '');
-    _unitController = TextEditingController(text: widget.product?.unit ?? 'piece');
-    _purchasePriceController = TextEditingController(
-      text: widget.product?.defaultPurchasePrice.toString() ?? '0',
-    );
-    _sellingPriceController = TextEditingController(
-      text: widget.product?.defaultSellingPrice.toString() ?? '0',
-    );
-    _taxRateController = TextEditingController(
-      text: widget.product?.taxRate.toString() ?? '0',
-    );
+    _itemController = TextEditingController(); // Pieces per lot
     _reorderLevelController = TextEditingController(
-      text: widget.product?.reorderLevel.toString() ?? '0',
+      text: widget.product?.reorderLevel.toString() ?? '',
     );
-    _categoryController = TextEditingController(text: widget.product?.category ?? '');
-    _loadCategories();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _skuController.dispose();
-    _barcodeController.dispose();
+    _lotNumberController.dispose();
     _descriptionController.dispose();
-    _unitController.dispose();
-    _purchasePriceController.dispose();
-    _sellingPriceController.dispose();
-    _taxRateController.dispose();
+    _itemController.dispose();
     _reorderLevelController.dispose();
-    _categoryController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCategories() async {
-    try {
-      final categories = await _productService.getAllCategories();
-      setState(() => _categories = categories);
-    } catch (e) {
-      // Ignore error
+  String _generateProductName() {
+    final baseName = _nameController.text.trim();
+    final currentDate = DateFormat('dd-MMM-yyyy').format(DateTime.now());
+    final lotNumber = _lotNumberController.text.trim();
+
+    if (lotNumber.isEmpty) {
+      return '$baseName $currentDate';
+    } else {
+      return '$baseName $currentDate $lotNumber';
     }
   }
 
@@ -85,26 +69,25 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final item = int.parse(_itemController.text.trim());
+
+      // Generate full product name with date and lot number
+      final fullProductName = _generateProductName();
+
       final product = ProductModel(
         id: widget.product?.id,
-        name: _nameController.text.trim(),
-        sku: _skuController.text.trim().isEmpty
-            ? null
-            : _skuController.text.trim(),
-        barcode: _barcodeController.text.trim().isEmpty
-            ? null
-            : _barcodeController.text.trim(),
+        name: fullProductName,
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        unit: _unitController.text.trim(),
-        defaultPurchasePrice: double.tryParse(_purchasePriceController.text.trim()) ?? 0,
-        defaultSellingPrice: double.tryParse(_sellingPriceController.text.trim()) ?? 0,
-        taxRate: double.tryParse(_taxRateController.text.trim()) ?? 0,
-        reorderLevel: int.tryParse(_reorderLevelController.text.trim()) ?? 0,
-        category: _categoryController.text.trim().isEmpty
-            ? null
-            : _categoryController.text.trim(),
+        unit: 'piece per lot', // Fixed unit
+        defaultPurchasePrice: 0, // Initially empty
+        defaultSellingPrice: 0, // Initially empty
+        taxRate: 0,
+        reorderLevel: _reorderLevelController.text.trim().isEmpty
+            ? 0
+            : int.parse(_reorderLevelController.text.trim()),
+        category: null,
         isActive: widget.product?.isActive ?? true,
         createdAt: widget.product?.createdAt ?? DateTime.now(),
         updatedAt: DateTime.now(),
@@ -121,8 +104,11 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           SnackBar(
             content: Text(_isEditing
                 ? 'Product updated successfully'
-                : 'Product created successfully'),
+                : 'Product created successfully\n'
+                  'Item: $item piece per lot\n'
+                  'Stock: 0 (will be added during purchase transaction)'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
         Navigator.pop(context, true);
@@ -167,6 +153,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
+            // Product Information Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -174,63 +161,98 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Basic Information',
+                      'Product Information',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // Product Base Name (Required)
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
-                        labelText: 'Product Name *',
+                        labelText: 'Name of Product *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.inventory_2),
+                        hintText: 'Base product name',
+                        helperText: 'Full name will include date and lot number',
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Please enter product name';
+                          return 'Product name is required';
                         }
                         return null;
                       },
                       textCapitalization: TextCapitalization.words,
+                      onChanged: (value) => setState(() {}), // Trigger rebuild for preview
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _skuController,
-                            decoration: const InputDecoration(
-                              labelText: 'SKU',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.qr_code),
-                              hintText: 'Stock Keeping Unit',
-                            ),
-                            textCapitalization: TextCapitalization.characters,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _barcodeController,
-                            decoration: const InputDecoration(
-                              labelText: 'Barcode',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.barcode_reader),
-                            ),
-                          ),
-                        ),
-                      ],
+
+                    // Lot Number (Optional)
+                    TextFormField(
+                      controller: _lotNumberController,
+                      decoration: const InputDecoration(
+                        labelText: 'Lot Number',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.numbers),
+                        hintText: 'Optional - e.g., BATCH-A',
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      onChanged: (value) => setState(() {}), // Trigger rebuild for preview
                     ),
                     const SizedBox(height: 16),
+
+                    // Product Name Preview
+                    if (_nameController.text.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.label, color: Colors.blue, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Full Product Name:',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _generateProductName(),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+
+                    // Description (Optional)
                     TextFormField(
                       controller: _descriptionController,
                       decoration: const InputDecoration(
                         labelText: 'Description',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.description),
+                        hintText: 'Product description (optional)',
                       ),
                       maxLines: 3,
                       textCapitalization: TextCapitalization.sentences,
@@ -239,176 +261,58 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 16),
+
+            // Item Definition Card
             Card(
+              color: Colors.green[50],
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Pricing & Unit',
+                      'Item Definition',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _unitController,
-                      decoration: const InputDecoration(
-                        labelText: 'Unit of Measurement *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.straighten),
-                        hintText: 'e.g., piece, kg, box, liter',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please enter unit';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _purchasePriceController,
-                            decoration: const InputDecoration(
-                              labelText: 'Purchase Price *',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.shopping_cart),
-                              prefixText: '\$ ',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                            ],
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Required';
-                              }
-                              final amount = double.tryParse(value.trim());
-                              if (amount == null || amount < 0) {
-                                return 'Invalid amount';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _sellingPriceController,
-                            decoration: const InputDecoration(
-                              labelText: 'Selling Price *',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.point_of_sale),
-                              prefixText: '\$ ',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                            ],
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Required';
-                              }
-                              final amount = double.tryParse(value.trim());
-                              if (amount == null || amount < 0) {
-                                return 'Invalid amount';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _taxRateController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tax Rate (%)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.percent),
-                        hintText: 'e.g., 5 for 5%',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                      ],
-                      validator: (value) {
-                        if (value != null && value.trim().isNotEmpty) {
-                          final rate = double.tryParse(value.trim());
-                          if (rate == null || rate < 0 || rate > 100) {
-                            return 'Enter valid rate (0-100)';
-                          }
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Inventory Management',
+                    const SizedBox(height: 8),
+                    Text(
+                      'Define how many pieces are in one lot',
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: Colors.grey[700],
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // Item (Pieces per Lot) - Required
                     TextFormField(
-                      controller: _categoryController,
-                      decoration: InputDecoration(
-                        labelText: 'Category',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.category),
-                        suffixIcon: _categories.isNotEmpty
-                            ? PopupMenuButton<String>(
-                                icon: const Icon(Icons.arrow_drop_down),
-                                onSelected: (value) {
-                                  _categoryController.text = value;
-                                },
-                                itemBuilder: (context) => _categories
-                                    .map((cat) => PopupMenuItem(
-                                          value: cat,
-                                          child: Text(cat),
-                                        ))
-                                    .toList(),
-                              )
-                            : null,
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _reorderLevelController,
+                      controller: _itemController,
                       decoration: const InputDecoration(
-                        labelText: 'Reorder Level',
+                        labelText: 'Item (Total Product in a Lot) *',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.warning_amber),
-                        hintText: 'Low stock alert threshold',
+                        prefixIcon: Icon(Icons.inventory),
+                        hintText: 'e.g., 50',
+                        suffixText: 'piece per lot',
+                        filled: true,
+                        fillColor: Colors.white,
+                        helperText: 'How many pieces in one lot/carton/box?',
                       ),
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
                       ],
                       validator: (value) {
-                        if (value != null && value.trim().isNotEmpty) {
-                          final level = int.tryParse(value.trim());
-                          if (level == null || level < 0) {
-                            return 'Enter valid number';
-                          }
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Item quantity is required';
+                        }
+                        final item = int.tryParse(value.trim());
+                        if (item == null || item <= 0) {
+                          return 'Enter valid number';
                         }
                         return null;
                       },
@@ -417,7 +321,116 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 ),
               ),
             ),
+
+            const SizedBox(height: 16),
+
+            // Stock & Price Information Card
+            Card(
+              color: Colors.amber[50],
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: Colors.amber, size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Stock & Price Information',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Initial Values (will be updated during purchase transaction):',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[800],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '• Stock: 0 pieces',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              Text(
+                                '• Price: Empty (৳0)',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'When you make a purchase transaction, you will enter the lot quantity, and the stock will be calculated as: Lot Quantity × Item',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Additional Settings Card
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Additional Settings',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Reorder Level (Optional)
+                    TextFormField(
+                      controller: _reorderLevelController,
+                      decoration: const InputDecoration(
+                        labelText: 'Reorder Level',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.warning_amber),
+                        hintText: 'Low stock alert threshold (optional)',
+                        suffixText: 'pieces',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 24),
+
+            // Action Buttons
             Row(
               children: [
                 Expanded(
@@ -435,7 +448,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     onPressed: _isLoading ? null : _saveProduct,
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      child: Text(_isEditing ? 'Update' : 'Create'),
+                      child: Text(_isEditing ? 'Update Product' : 'Create Product'),
                     ),
                   ),
                 ),

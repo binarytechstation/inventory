@@ -15,6 +15,7 @@ import '../reports/reports_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/transaction/transaction_service.dart';
+import '../../../services/currency/currency_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -27,6 +28,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   final ProductService _productService = ProductService();
   final TransactionService _transactionService = TransactionService();
+  final CurrencyService _currencyService = CurrencyService();
 
   // KPI Data
   Map<String, dynamic>? _todaysSales;
@@ -34,6 +36,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _lowStockCount = 0;
   int _totalProducts = 0;
   bool _isLoadingKPIs = false;
+  String _currencySymbol = '৳';
 
   // Auto-refresh timer
   Timer? _refreshTimer;
@@ -64,12 +67,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Icons.settings,
   ];
 
+  // Get menu items based on user permissions
+  List<int> _getAllowedMenuIndices(AuthProvider authProvider) {
+    final user = authProvider.currentUser;
+    if (user == null) return [0]; // Only Dashboard
+
+    List<int> allowed = [0]; // Dashboard always visible
+
+    if (user.hasPermission('view_products')) allowed.add(1); // Products
+    if (user.hasPermission('view_suppliers')) allowed.add(2); // Suppliers
+    if (user.hasPermission('view_customers')) allowed.add(3); // Customers
+    if (user.hasPermission('view_transactions')) allowed.add(4); // Transactions
+    if (user.hasPermission('create_sale')) allowed.add(5); // Held Bills (for cashiers)
+    if (user.hasPermission('view_reports')) allowed.add(6); // Reports
+    if (user.isAdmin) allowed.add(7); // Users (admin only)
+    if (user.isAdmin) allowed.add(8); // Settings (admin only)
+
+    return allowed;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _loadCurrencySymbol();
     // Set up auto-refresh every 30 seconds when on dashboard
     _startAutoRefresh();
+  }
+
+  Future<void> _loadCurrencySymbol() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol;
+        });
+      }
+    } catch (e) {
+      // Use default Taka symbol if error
+    }
   }
 
   @override
@@ -162,75 +198,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 minHeight: MediaQuery.of(context).size.height,
               ),
               child: IntrinsicHeight(
-                child: NavigationRail(
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                    });
+child: Builder(
+                  builder: (context) {
+                    final authProvider = Provider.of<AuthProvider>(context);
+                    final allowedIndices = _getAllowedMenuIndices(authProvider);
+
+                    // Map selected index to allowed indices
+                    int displayIndex = allowedIndices.indexOf(_selectedIndex);
+                    if (displayIndex == -1) displayIndex = 0;
+
+                    return NavigationRail(
+                      selectedIndex: displayIndex,
+                      onDestinationSelected: (displayIndex) {
+                        setState(() {
+                          _selectedIndex = allowedIndices[displayIndex];
+                        });
+                      },
+                      labelType: NavigationRailLabelType.all,
+                      leading: Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          const Icon(Icons.inventory_2, size: 48, color: Colors.blue),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Inventory',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                      trailing: Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(
+                                  child: Text(
+                                    user?.name.substring(0, 1).toUpperCase() ?? 'U',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  user?.name ?? 'User',
+                                  style: const TextStyle(fontSize: 12),
+                                  textAlign: TextAlign.center,
+                                ),
+                                Text(
+                                  user?.role ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.logout),
+                                  tooltip: 'Logout',
+                                  onPressed: () {
+                                    _handleLogout(context);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      destinations: allowedIndices.map((index) => NavigationRailDestination(
+                        icon: Icon(_menuIcons[index]),
+                        label: Text(_menuTitles[index]),
+                      )).toList(),
+                    );
                   },
-                  labelType: NavigationRailLabelType.all,
-                  leading: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      const Icon(Icons.inventory_2, size: 48, color: Colors.blue),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Inventory',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                  trailing: Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircleAvatar(
-                              child: Text(
-                                user?.name.substring(0, 1).toUpperCase() ?? 'U',
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              user?.name ?? 'User',
-                              style: const TextStyle(fontSize: 12),
-                              textAlign: TextAlign.center,
-                            ),
-                            Text(
-                              user?.role ?? '',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            IconButton(
-                              icon: const Icon(Icons.logout),
-                              tooltip: 'Logout',
-                              onPressed: () {
-                                _handleLogout(context);
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  destinations: List.generate(
-                    _menuTitles.length,
-                    (index) => NavigationRailDestination(
-                      icon: Icon(_menuIcons[index]),
-                      label: Text(_menuTitles[index]),
-                    ),
-                  ),
                 ),
               ),
             ),
@@ -275,19 +319,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const POSScreen()),
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              final canCreateSale = authProvider.currentUser?.hasPermission('create_sale') ?? false;
+
+              return Tooltip(
+                message: canCreateSale ? '' : 'Admin access only',
+                child: ElevatedButton.icon(
+                  onPressed: canCreateSale
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const POSScreen()),
+                          );
+                        }
+                      : null,
+                  icon: const Icon(Icons.point_of_sale),
+                  label: const Text('New Sale'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: canCreateSale ? Colors.green : Colors.grey,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               );
             },
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('New Sale'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
           ),
           const SizedBox(width: 8),
           if (_isLoadingKPIs)
@@ -334,7 +389,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildKPICard(
                   'Today\'s Sales',
                   _todaysSales != null
-                      ? '\$${(_todaysSales!['total_sales'] as num).toStringAsFixed(2)}'
+                      ? '$_currencySymbol${(_todaysSales!['total_sales'] as num).toStringAsFixed(2)}'
                       : '...',
                   Icons.shopping_cart,
                   Colors.green,
@@ -345,7 +400,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildKPICard(
                   'Today\'s Purchases',
                   _todaysPurchases != null
-                      ? '\$${(_todaysPurchases!['total_purchases'] as num).toStringAsFixed(2)}'
+                      ? '$_currencySymbol${(_todaysPurchases!['total_purchases'] as num).toStringAsFixed(2)}'
                       : '...',
                   Icons.add_shopping_cart,
                   Colors.blue,
@@ -456,7 +511,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             reservedSize: 40,
                                             getTitlesWidget: (value, meta) {
                                               return Text(
-                                                '\$${value.toInt()}',
+                                                '$_currencySymbol${value.toInt()}',
                                                 style: const TextStyle(fontSize: 10),
                                               );
                                             },
@@ -574,7 +629,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           style: const TextStyle(fontSize: 10),
                                         ),
                                         trailing: Text(
-                                          '\$${total.toStringAsFixed(2)}',
+                                          '$_currencySymbol${total.toStringAsFixed(2)}',
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.bold,

@@ -1,9 +1,21 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import '../../core/utils/file_save_helper.dart';
+import '../currency/currency_service.dart';
 
 class ExcelExportService {
+  final CurrencyService _currencyService = CurrencyService();
+
+  /// Convert currency symbol to Excel-friendly format
+  String _formatCurrencySymbol(String symbol) {
+    // Replace ৳ with Tk for better compatibility
+    if (symbol == '৳') {
+      return 'Tk';
+    }
+    return symbol;
+  }
+
   /// Export sales report to Excel
   Future<File> exportSalesReport({
     required Map<String, dynamic> data,
@@ -12,6 +24,9 @@ class ExcelExportService {
   }) async {
     final excel = Excel.createExcel();
     final sheet = excel['Sales Report'];
+
+    // Get currency symbol
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     // Title and date range
     sheet.appendRow([TextCellValue('Sales Summary Report')]);
@@ -28,11 +43,11 @@ class ExcelExportService {
     // Data rows
     sheet.appendRow([TextCellValue('Total Transactions'), TextCellValue(data['total_transactions'].toString())]);
     sheet.appendRow([TextCellValue('Unique Customers'), TextCellValue(data['unique_customers'].toString())]);
-    sheet.appendRow([TextCellValue('Subtotal'), TextCellValue('\$${(data['subtotal'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Discount'), TextCellValue('\$${(data['total_discount'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Tax'), TextCellValue('\$${(data['total_tax'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Sales'), TextCellValue('\$${(data['total_sales'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Average Sale'), TextCellValue('\$${(data['average_sale'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Subtotal'), TextCellValue('$currencySymbol${(data['subtotal'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Discount'), TextCellValue('$currencySymbol${(data['total_discount'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Tax'), TextCellValue('$currencySymbol${(data['total_tax'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Sales'), TextCellValue('$currencySymbol${(data['total_sales'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Average Sale'), TextCellValue('$currencySymbol${(data['average_sale'] as num).toStringAsFixed(2)}')]);
 
     // Bold the total sales row
     final totalRow = 3 + 5; // Header row + 5 data rows
@@ -54,6 +69,9 @@ class ExcelExportService {
     final excel = Excel.createExcel();
     final sheet = excel['Purchase Report'];
 
+    // Get currency symbol
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
+
     // Title and date range
     sheet.appendRow([TextCellValue('Purchase Summary Report')]);
     sheet.appendRow([TextCellValue('Period: ${_formatDate(startDate)} to ${_formatDate(endDate)}')]);
@@ -66,11 +84,11 @@ class ExcelExportService {
     // Data rows
     sheet.appendRow([TextCellValue('Total Transactions'), TextCellValue(data['total_transactions'].toString())]);
     sheet.appendRow([TextCellValue('Unique Suppliers'), TextCellValue(data['unique_suppliers'].toString())]);
-    sheet.appendRow([TextCellValue('Subtotal'), TextCellValue('\$${(data['subtotal'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Discount'), TextCellValue('\$${(data['total_discount'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Tax'), TextCellValue('\$${(data['total_tax'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Total Purchases'), TextCellValue('\$${(data['total_purchases'] as num).toStringAsFixed(2)}')]);
-    sheet.appendRow([TextCellValue('Average Purchase'), TextCellValue('\$${(data['average_purchase'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Subtotal'), TextCellValue('$currencySymbol${(data['subtotal'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Discount'), TextCellValue('$currencySymbol${(data['total_discount'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Tax'), TextCellValue('$currencySymbol${(data['total_tax'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Total Purchases'), TextCellValue('$currencySymbol${(data['total_purchases'] as num).toStringAsFixed(2)}')]);
+    sheet.appendRow([TextCellValue('Average Purchase'), TextCellValue('$currencySymbol${(data['average_purchase'] as num).toStringAsFixed(2)}')]);
 
     _styleTotalRow(sheet, 8);
 
@@ -84,6 +102,9 @@ class ExcelExportService {
   Future<File> exportInventoryReport(List<Map<String, dynamic>> data) async {
     final excel = Excel.createExcel();
     final sheet = excel['Inventory'];
+
+    // Get currency symbol
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     // Title
     sheet.appendRow([TextCellValue('Inventory Report')]);
@@ -115,8 +136,8 @@ class ExcelExportService {
         TextCellValue(item['category'] ?? ''),
         TextCellValue(stock.toStringAsFixed(1)),
         TextCellValue(reorderLevel.toString()),
-        TextCellValue('\$${(item['avg_cost'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
-        TextCellValue('\$${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(item['avg_cost'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
         TextCellValue(isLowStock ? 'LOW STOCK' : 'OK'),
       ]);
     }
@@ -138,6 +159,9 @@ class ExcelExportService {
   }) async {
     final excel = Excel.createExcel();
     final sheet = excel['Product Performance'];
+
+    // Get currency symbol
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     // Title
     sheet.appendRow([TextCellValue('${topPerformers ? 'Top' : 'Bottom'} Performing Products')]);
@@ -162,8 +186,8 @@ class ExcelExportService {
         TextCellValue(product['sku'] ?? ''),
         TextCellValue((product['transaction_count'] ?? 0).toString()),
         TextCellValue(((product['total_quantity'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)),
-        TextCellValue('\$${(product['total_revenue'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
-        TextCellValue('\$${(product['avg_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(product['total_revenue'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(product['avg_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
       ]);
     }
 
@@ -179,6 +203,9 @@ class ExcelExportService {
   Future<File> exportCustomerReport(List<Map<String, dynamic>> data) async {
     final excel = Excel.createExcel();
     final sheet = excel['Customer Report'];
+
+    // Get currency symbol
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     // Title
     sheet.appendRow([TextCellValue('Customer Report')]);
@@ -209,9 +236,9 @@ class ExcelExportService {
         TextCellValue(customer['company_name'] ?? ''),
         TextCellValue(customer['email'] ?? ''),
         TextCellValue(customer['phone'] ?? ''),
-        TextCellValue('\$${(customer['total_sales'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(customer['total_sales'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
         TextCellValue((customer['sales_count'] ?? 0).toString()),
-        TextCellValue('\$${(customer['current_balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+        TextCellValue('$currencySymbol${(customer['current_balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
         TextCellValue(lastTxn),
       ]);
     }
@@ -408,17 +435,31 @@ class ExcelExportService {
 
   // Helper: Save Excel file
   Future<File> _saveExcel(Excel excel, String prefix) async {
-    final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final fileName = '${prefix}_$timestamp.xlsx';
-    final file = File('${directory.path}/$fileName');
 
     final bytes = excel.encode();
-    if (bytes != null) {
-      await file.writeAsBytes(bytes);
+    if (bytes == null) {
+      throw Exception('Failed to encode Excel file');
     }
 
-    return file;
+    // Use FileSaveHelper for cross-platform saving
+    // Windows: Saves directly to Documents (existing behavior)
+    // macOS/Linux: Shows save dialog for proper permissions
+    final savedPath = await FileSaveHelper.saveExcel(
+      excelBytes: bytes,
+      fileName: fileName,
+    );
+
+    if (savedPath == null) {
+      // User cancelled or error occurred - save to temp directory
+      final tempPath = await FileSaveHelper.getTempFilePath(fileName);
+      final file = File(tempPath);
+      await file.writeAsBytes(bytes);
+      return file;
+    }
+
+    return File(savedPath);
   }
 
   // Helper: Format date

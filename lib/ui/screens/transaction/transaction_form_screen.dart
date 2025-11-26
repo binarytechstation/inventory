@@ -7,6 +7,7 @@ import '../../../services/product/product_service.dart';
 import '../../../services/customer/customer_service.dart';
 import '../../../services/supplier/supplier_service.dart';
 import '../../../services/transaction/transaction_service.dart';
+import '../../../services/currency/currency_service.dart';
 
 class TransactionFormScreen extends StatefulWidget {
   final String transactionType; // 'BUY' or 'SELL'
@@ -26,6 +27,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   final CustomerService _customerService = CustomerService();
   final SupplierService _supplierService = SupplierService();
   final TransactionService _transactionService = TransactionService();
+  final CurrencyService _currencyService = CurrencyService();
 
   // Transaction data
   DateTime _transactionDate = DateTime.now();
@@ -42,8 +44,27 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   double _tax = 0;
   double _total = 0;
 
-  final bool _isLoading = false;
   bool _isSaving = false;
+  String _currencySymbol = '৳';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrencySymbol();
+  }
+
+  Future<void> _loadCurrencySymbol() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol;
+        });
+      }
+    } catch (e) {
+      // Use default Taka symbol if error
+    }
+  }
 
   @override
   void dispose() {
@@ -83,37 +104,44 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     final products = await _productService.getAllProducts();
     if (!mounted) return;
 
-    final selected = await showDialog<ProductModel>(
+    final selectedProducts = await showDialog<List<Map<String, dynamic>>>(
       context: context,
-      builder: (context) => _ProductSelectionDialog(products: products),
+      builder: (context) => _ProductSelectionDialog(
+        products: products,
+        transactionType: widget.transactionType,
+        existingLineItems: _lineItems,
+      ),
     );
 
-    if (selected != null) {
-      // Check if product already in list
-      final existing = _lineItems.indexWhere((item) => item['product_id'] == selected.id);
-
-      if (existing >= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Product already added. Edit quantity in the list.')),
-        );
-        return;
-      }
-
+    if (selectedProducts != null && selectedProducts.isNotEmpty) {
       setState(() {
-        _lineItems.add({
-          'product_id': selected.id!,
-          'product_name': selected.name,
-          'product_unit': selected.unit,
-          'quantity': 1.0,
-          'unit_price': widget.transactionType == 'BUY'
-              ? selected.defaultPurchasePrice
-              : selected.defaultSellingPrice,
-          'discount': 0.0,
-          'tax': selected.taxRate,
-          'subtotal': widget.transactionType == 'BUY'
-              ? selected.defaultPurchasePrice
-              : selected.defaultSellingPrice,
-        });
+        for (final productData in selectedProducts) {
+          // Check if product already exists
+          final existing = _lineItems.indexWhere(
+            (item) => item['product_id'] == productData['product_id'],
+          );
+
+          if (existing >= 0) {
+            // Update existing quantity
+            _lineItems[existing]['quantity'] =
+                (_lineItems[existing]['quantity'] as double) + (productData['quantity'] as double);
+
+            final quantity = _lineItems[existing]['quantity'] as double;
+            final unitPrice = _lineItems[existing]['unit_price'] as double;
+            final discount = _lineItems[existing]['discount'] as double;
+            final tax = _lineItems[existing]['tax'] as double;
+
+            final itemSubtotal = quantity * unitPrice;
+            final discountAmount = (itemSubtotal * discount) / 100;
+            final afterDiscount = itemSubtotal - discountAmount;
+            final taxAmount = (afterDiscount * tax) / 100;
+
+            _lineItems[existing]['subtotal'] = afterDiscount + taxAmount;
+          } else {
+            // Add new product
+            _lineItems.add(productData);
+          }
+        }
       });
       _calculateTotals();
     }
@@ -153,6 +181,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       context: context,
       builder: (context) => _LineItemEditDialog(
         item: item,
+        transactionType: widget.transactionType,
         onSave: (updatedItem) {
           setState(() {
             _lineItems[index] = updatedItem;
@@ -364,13 +393,13 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                               return ListTile(
                                 title: Text(item['product_name']),
                                 subtitle: Text(
-                                  '${item['quantity']} ${item['product_unit']} × \$${item['unit_price'].toStringAsFixed(2)}',
+                                  '${item['quantity']} ${item['product_unit']} × $_currencySymbol${item['unit_price'].toStringAsFixed(2)}',
                                 ),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      '\$${item['subtotal'].toStringAsFixed(2)}',
+                                      '$_currencySymbol${item['subtotal'].toStringAsFixed(2)}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
@@ -481,7 +510,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             ),
           ),
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            '$_currencySymbol${amount.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: isTotal ? 20 : 16,
               fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
@@ -496,41 +525,202 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
 // Product Selection Dialog
 class _ProductSelectionDialog extends StatefulWidget {
-  final List<ProductModel> products;
+  final List<dynamic> products;
+  final String transactionType;
+  final List<Map<String, dynamic>> existingLineItems;
 
-  const _ProductSelectionDialog({required this.products});
+  const _ProductSelectionDialog({
+    required this.products,
+    required this.transactionType,
+    required this.existingLineItems,
+  });
 
   @override
   State<_ProductSelectionDialog> createState() => _ProductSelectionDialogState();
 }
 
 class _ProductSelectionDialogState extends State<_ProductSelectionDialog> {
+  final ProductService _productService = ProductService();
+  final CurrencyService _currencyService = CurrencyService();
   final TextEditingController _searchController = TextEditingController();
-  List<ProductModel> _filteredProducts = [];
+  List<dynamic> _filteredProducts = [];
+  List<dynamic> _allProducts = [];
+  String _currencySymbol = '৳';
+
+  // Track selected products with quantities
+  final Map<int, double> _selectedProducts = {};
 
   @override
   void initState() {
     super.initState();
+    _allProducts = widget.products;
     _filteredProducts = widget.products;
+    _loadCurrencySymbol();
+  }
+
+  Future<void> _loadCurrencySymbol() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol;
+        });
+      }
+    } catch (e) {
+      // Use default Taka symbol if error
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _filterProducts(String query) {
     setState(() {
-      _filteredProducts = widget.products.where((product) {
-        return product.name.toLowerCase().contains(query.toLowerCase()) ||
-            (product.sku?.toLowerCase().contains(query.toLowerCase()) ?? false) ||
-            (product.barcode?.toLowerCase().contains(query.toLowerCase()) ?? false);
+      _filteredProducts = _allProducts.where((product) {
+        final productMap = product as Map<String, dynamic>;
+        final name = (productMap['name'] as String?)?.toLowerCase() ?? '';
+        final sku = (productMap['sku'] as String?)?.toLowerCase() ?? '';
+        final barcode = (productMap['barcode'] as String?)?.toLowerCase() ?? '';
+        return name.contains(query.toLowerCase()) ||
+            sku.contains(query.toLowerCase()) ||
+            barcode.contains(query.toLowerCase());
       }).toList();
     });
+  }
+
+  Future<void> _addNewProduct() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _InlineProductFormDialog(),
+    );
+
+    if (result == true) {
+      // Refresh product list
+      final products = await _productService.getAllProducts();
+      setState(() {
+        _allProducts = products;
+        _filteredProducts = products;
+        _searchController.clear();
+      });
+    }
+  }
+
+  void _toggleProduct(Map<String, dynamic> productMap) {
+    final productId = productMap['id'] as int;
+    setState(() {
+      if (_selectedProducts.containsKey(productId)) {
+        _selectedProducts.remove(productId);
+      } else {
+        _selectedProducts[productId] = 1.0;
+      }
+    });
+  }
+
+  void _incrementQuantity(int productId) {
+    // For SELL transactions, check if quantity exceeds available stock
+    if (widget.transactionType == 'SELL') {
+      final productMap = _allProducts.firstWhere(
+        (p) => (p as Map<String, dynamic>)['id'] == productId
+      ) as Map<String, dynamic>;
+      final currentQty = _selectedProducts[productId] ?? 1.0;
+      final newQty = currentQty + 1.0;
+      final availableStock = ((productMap['current_stock'] as num?)?.toDouble() ?? 0.0);
+      final productUnit = (productMap['unit'] as String?) ?? 'piece';
+
+      // Check existing quantity in line items
+      final existingItem = widget.existingLineItems.firstWhere(
+        (item) => item['product_id'] == productId,
+        orElse: () => {},
+      );
+      final existingQty = existingItem.isNotEmpty ? (existingItem['quantity'] as double?) ?? 0.0 : 0.0;
+
+      if (newQty + existingQty > availableStock) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Cannot exceed available stock (${availableStock.toStringAsFixed(2)} $productUnit)',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      _selectedProducts[productId] = (_selectedProducts[productId] ?? 1.0) + 1.0;
+    });
+  }
+
+  void _decrementQuantity(int productId) {
+    setState(() {
+      final currentQty = _selectedProducts[productId] ?? 1.0;
+      if (currentQty > 1.0) {
+        _selectedProducts[productId] = currentQty - 1.0;
+      } else {
+        _selectedProducts.remove(productId);
+      }
+    });
+  }
+
+  void _proceedWithSelection() {
+    if (_selectedProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one product')),
+      );
+      return;
+    }
+
+    final selectedProductData = <Map<String, dynamic>>[];
+
+    for (final entry in _selectedProducts.entries) {
+      final productId = entry.key;
+      final quantity = entry.value;
+
+      final productMap = _allProducts.firstWhere(
+        (p) => (p as Map<String, dynamic>)['id'] == productId
+      ) as Map<String, dynamic>;
+
+      final unitPrice = widget.transactionType == 'BUY'
+          ? ((productMap['default_purchase_price'] as num?)?.toDouble() ?? 0.0)
+          : ((productMap['default_selling_price'] as num?)?.toDouble() ?? 0.0);
+
+      selectedProductData.add({
+        'product_id': productMap['id'] as int,
+        'lot_id': 1, // Default to lot 1 for compatibility
+        'product_name': (productMap['name'] as String?) ?? 'Unknown',
+        'product_unit': (productMap['unit'] as String?) ?? 'piece',
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'discount': 0.0,
+        'tax': ((productMap['tax_rate'] as num?)?.toDouble() ?? 0.0),
+        'subtotal': quantity * unitPrice,
+      });
+    }
+
+    Navigator.pop(context, selectedProductData);
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Select Product'),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Select Products (${_selectedProducts.length})'),
+          TextButton.icon(
+            onPressed: _addNewProduct,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add New'),
+          ),
+        ],
+      ),
       content: SizedBox(
-        width: 500,
-        height: 500,
+        width: 600,
+        height: 600,
         child: Column(
           children: [
             TextField(
@@ -544,18 +734,77 @@ class _ProductSelectionDialogState extends State<_ProductSelectionDialog> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.builder(
-                itemCount: _filteredProducts.length,
-                itemBuilder: (context, index) {
-                  final product = _filteredProducts[index];
-                  return ListTile(
-                    title: Text(product.name),
-                    subtitle: Text('SKU: ${product.sku ?? 'N/A'} | Stock: ${product.currentStock?.toStringAsFixed(2) ?? '0'} ${product.unit}'),
-                    trailing: Text('\$${product.defaultSellingPrice.toStringAsFixed(2)}'),
-                    onTap: () => Navigator.pop(context, product),
-                  );
-                },
-              ),
+              child: _filteredProducts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No products found',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _filteredProducts.length,
+                      itemBuilder: (context, index) {
+                        final productMap = _filteredProducts[index] as Map<String, dynamic>;
+                        final productId = productMap['id'] as int;
+                        final productName = (productMap['name'] as String?) ?? 'Unknown';
+                        final productSku = (productMap['sku'] as String?) ?? 'N/A';
+                        final productStock = ((productMap['current_stock'] as num?)?.toDouble() ?? 0.0);
+                        final productUnit = (productMap['unit'] as String?) ?? 'piece';
+                        final productPrice = widget.transactionType == 'BUY'
+                            ? ((productMap['default_purchase_price'] as num?)?.toDouble() ?? 0.0)
+                            : ((productMap['default_selling_price'] as num?)?.toDouble() ?? 0.0);
+
+                        final isSelected = _selectedProducts.containsKey(productId);
+                        final quantity = _selectedProducts[productId] ?? 1.0;
+
+                        return Card(
+                          color: isSelected ? Colors.blue.withOpacity(0.1) : null,
+                          child: ListTile(
+                            leading: Checkbox(
+                              value: isSelected,
+                              onChanged: (value) => _toggleProduct(productMap),
+                            ),
+                            title: Text(productName),
+                            subtitle: Text(
+                              'SKU: $productSku | Stock: ${productStock.toStringAsFixed(2)} $productUnit\n'
+                              'Price: $_currencySymbol${productPrice.toStringAsFixed(2)}',
+                            ),
+                            trailing: isSelected
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline),
+                                        onPressed: () => _decrementQuantity(productId),
+                                        color: Colors.red,
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          quantity.toStringAsFixed(0),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline),
+                                        onPressed: () => _incrementQuantity(productId),
+                                        color: Colors.green,
+                                      ),
+                                    ],
+                                  )
+                                : null,
+                            onTap: () => _toggleProduct(productMap),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -565,35 +814,86 @@ class _ProductSelectionDialogState extends State<_ProductSelectionDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
+        ElevatedButton.icon(
+          onPressed: _selectedProducts.isEmpty ? null : _proceedWithSelection,
+          icon: const Icon(Icons.check),
+          label: Text('Proceed (${_selectedProducts.length})'),
+        ),
       ],
     );
   }
 }
 
 // Supplier Selection Dialog
-class _SupplierSelectionDialog extends StatelessWidget {
+class _SupplierSelectionDialog extends StatefulWidget {
   final List<SupplierModel> suppliers;
 
   const _SupplierSelectionDialog({required this.suppliers});
 
   @override
+  State<_SupplierSelectionDialog> createState() => _SupplierSelectionDialogState();
+}
+
+class _SupplierSelectionDialogState extends State<_SupplierSelectionDialog> {
+  final SupplierService _supplierService = SupplierService();
+  List<SupplierModel> _suppliers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _suppliers = widget.suppliers;
+  }
+
+  Future<void> _addNewSupplier() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _InlineSupplierFormDialog(),
+    );
+
+    if (result == true) {
+      // Refresh supplier list
+      final suppliers = await _supplierService.getAllSuppliers();
+      setState(() {
+        _suppliers = suppliers;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Select Supplier'),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Select Supplier'),
+          TextButton.icon(
+            onPressed: _addNewSupplier,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add New'),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 400,
         height: 400,
-        child: ListView.builder(
-          itemCount: suppliers.length,
-          itemBuilder: (context, index) {
-            final supplier = suppliers[index];
-            return ListTile(
-              title: Text(supplier.name),
-              subtitle: Text(supplier.companyName ?? supplier.phone ?? ''),
-              onTap: () => Navigator.pop(context, supplier),
-            );
-          },
-        ),
+        child: _suppliers.isEmpty
+            ? const Center(
+                child: Text(
+                  'No suppliers found',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            : ListView.builder(
+                itemCount: _suppliers.length,
+                itemBuilder: (context, index) {
+                  final supplier = _suppliers[index];
+                  return ListTile(
+                    title: Text(supplier.name),
+                    subtitle: Text(supplier.companyName ?? supplier.phone ?? ''),
+                    onTap: () => Navigator.pop(context, supplier),
+                  );
+                },
+              ),
       ),
       actions: [
         TextButton(
@@ -606,29 +906,75 @@ class _SupplierSelectionDialog extends StatelessWidget {
 }
 
 // Customer Selection Dialog
-class _CustomerSelectionDialog extends StatelessWidget {
+class _CustomerSelectionDialog extends StatefulWidget {
   final List<CustomerModel> customers;
 
   const _CustomerSelectionDialog({required this.customers});
 
   @override
+  State<_CustomerSelectionDialog> createState() => _CustomerSelectionDialogState();
+}
+
+class _CustomerSelectionDialogState extends State<_CustomerSelectionDialog> {
+  final CustomerService _customerService = CustomerService();
+  List<CustomerModel> _customers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _customers = widget.customers;
+  }
+
+  Future<void> _addNewCustomer() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _InlineCustomerFormDialog(),
+    );
+
+    if (result == true) {
+      // Refresh customer list
+      final customers = await _customerService.getAllCustomers();
+      setState(() {
+        _customers = customers;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Select Customer'),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Select Customer'),
+          TextButton.icon(
+            onPressed: _addNewCustomer,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add New'),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 400,
         height: 400,
-        child: ListView.builder(
-          itemCount: customers.length,
-          itemBuilder: (context, index) {
-            final customer = customers[index];
-            return ListTile(
-              title: Text(customer.name),
-              subtitle: Text(customer.companyName ?? customer.phone ?? ''),
-              onTap: () => Navigator.pop(context, customer),
-            );
-          },
-        ),
+        child: _customers.isEmpty
+            ? const Center(
+                child: Text(
+                  'No customers found',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            : ListView.builder(
+                itemCount: _customers.length,
+                itemBuilder: (context, index) {
+                  final customer = _customers[index];
+                  return ListTile(
+                    title: Text(customer.name),
+                    subtitle: Text(customer.companyName ?? customer.phone ?? ''),
+                    onTap: () => Navigator.pop(context, customer),
+                  );
+                },
+              ),
       ),
       actions: [
         TextButton(
@@ -643,19 +989,26 @@ class _CustomerSelectionDialog extends StatelessWidget {
 // Line Item Edit Dialog
 class _LineItemEditDialog extends StatefulWidget {
   final Map<String, dynamic> item;
+  final String transactionType;
   final Function(Map<String, dynamic>) onSave;
 
-  const _LineItemEditDialog({required this.item, required this.onSave});
+  const _LineItemEditDialog({
+    required this.item,
+    required this.transactionType,
+    required this.onSave,
+  });
 
   @override
   State<_LineItemEditDialog> createState() => _LineItemEditDialogState();
 }
 
 class _LineItemEditDialogState extends State<_LineItemEditDialog> {
+  final CurrencyService _currencyService = CurrencyService();
   late TextEditingController _quantityController;
   late TextEditingController _priceController;
   late TextEditingController _discountController;
   late TextEditingController _taxController;
+  String _currencySymbol = '৳';
 
   @override
   void initState() {
@@ -672,6 +1025,20 @@ class _LineItemEditDialogState extends State<_LineItemEditDialog> {
     _taxController = TextEditingController(
       text: widget.item['tax'].toString(),
     );
+    _loadCurrencySymbol();
+  }
+
+  Future<void> _loadCurrencySymbol() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      if (mounted) {
+        setState(() {
+          _currencySymbol = symbol;
+        });
+      }
+    } catch (e) {
+      // Use default Taka symbol if error
+    }
   }
 
   @override
@@ -683,11 +1050,40 @@ class _LineItemEditDialogState extends State<_LineItemEditDialog> {
     super.dispose();
   }
 
-  void _save() {
+  void _save() async {
     final quantity = double.tryParse(_quantityController.text) ?? 0;
     final price = double.tryParse(_priceController.text) ?? 0;
     final discount = double.tryParse(_discountController.text) ?? 0;
     final tax = double.tryParse(_taxController.text) ?? 0;
+
+    // For SELL transactions, validate stock
+    if (widget.transactionType == 'SELL') {
+      final productId = widget.item['product_id'] as int;
+      final productService = ProductService();
+
+      try {
+        final product = await productService.getProductById(productId);
+        if (product != null) {
+          final availableStock = product.currentStock ?? 0.0;
+
+          if (quantity > availableStock) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Cannot exceed available stock (${availableStock.toStringAsFixed(2)} ${product.unit})',
+                  ),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        // Continue if product fetch fails
+      }
+    }
 
     final subtotal = quantity * price;
     final discountAmount = (subtotal * discount) / 100;
@@ -704,7 +1100,9 @@ class _LineItemEditDialogState extends State<_LineItemEditDialog> {
       'subtotal': total,
     });
 
-    Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -728,10 +1126,10 @@ class _LineItemEditDialogState extends State<_LineItemEditDialog> {
           const SizedBox(height: 16),
           TextField(
             controller: _priceController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Unit Price',
-              border: OutlineInputBorder(),
-              prefixText: '\$ ',
+              border: const OutlineInputBorder(),
+              prefixText: '$_currencySymbol ',
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
@@ -780,6 +1178,576 @@ class _LineItemEditDialogState extends State<_LineItemEditDialog> {
         ElevatedButton(
           onPressed: _save,
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+// Inline Customer Form Dialog
+class _InlineCustomerFormDialog extends StatefulWidget {
+  const _InlineCustomerFormDialog();
+
+  @override
+  State<_InlineCustomerFormDialog> createState() => _InlineCustomerFormDialogState();
+}
+
+class _InlineCustomerFormDialogState extends State<_InlineCustomerFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final CustomerService _customerService = CustomerService();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _companyNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _companyNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveCustomer() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final customer = CustomerModel(
+        name: _nameController.text.trim(),
+        companyName: _companyNameController.text.trim().isEmpty
+            ? null
+            : _companyNameController.text.trim(),
+        phone: _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
+        email: _emailController.text.trim().isEmpty
+            ? null
+            : _emailController.text.trim(),
+        creditLimit: 0,
+        currentBalance: 0,
+        isActive: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await _customerService.createCustomer(customer);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Customer created successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add New Customer'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Customer Name *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter customer name';
+                    }
+                    return null;
+                  },
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _companyNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Company Name',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.business),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value != null && value.trim().isNotEmpty) {
+                      if (!value.contains('@')) {
+                        return 'Please enter a valid email';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveCustomer,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create'),
+        ),
+      ],
+    );
+  }
+}
+
+// Inline Supplier Form Dialog
+class _InlineSupplierFormDialog extends StatefulWidget {
+  const _InlineSupplierFormDialog();
+
+  @override
+  State<_InlineSupplierFormDialog> createState() => _InlineSupplierFormDialogState();
+}
+
+class _InlineSupplierFormDialogState extends State<_InlineSupplierFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final SupplierService _supplierService = SupplierService();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _companyNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _companyNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveSupplier() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supplier = SupplierModel(
+        name: _nameController.text.trim(),
+        companyName: _companyNameController.text.trim().isEmpty
+            ? null
+            : _companyNameController.text.trim(),
+        phone: _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
+        email: _emailController.text.trim().isEmpty
+            ? null
+            : _emailController.text.trim(),
+        isActive: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await _supplierService.createSupplier(supplier);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Supplier created successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add New Supplier'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Supplier Name *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter supplier name';
+                    }
+                    return null;
+                  },
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _companyNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Company Name',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.business),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value != null && value.trim().isNotEmpty) {
+                      if (!value.contains('@')) {
+                        return 'Please enter a valid email';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveSupplier,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create'),
+        ),
+      ],
+    );
+  }
+}
+
+// Inline Product Form Dialog
+class _InlineProductFormDialog extends StatefulWidget {
+  const _InlineProductFormDialog();
+
+  @override
+  State<_InlineProductFormDialog> createState() => _InlineProductFormDialogState();
+}
+
+class _InlineProductFormDialogState extends State<_InlineProductFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final ProductService _productService = ProductService();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _skuController = TextEditingController();
+  final TextEditingController _unitController = TextEditingController(text: 'piece');
+  final TextEditingController _purchasePriceController = TextEditingController(text: '0');
+  final TextEditingController _sellingPriceController = TextEditingController(text: '0');
+  final TextEditingController _taxRateController = TextEditingController(text: '0');
+
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _skuController.dispose();
+    _unitController.dispose();
+    _purchasePriceController.dispose();
+    _sellingPriceController.dispose();
+    _taxRateController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveProduct() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final product = ProductModel(
+        name: _nameController.text.trim(),
+        sku: _skuController.text.trim().isEmpty
+            ? null
+            : _skuController.text.trim(),
+        unit: _unitController.text.trim(),
+        defaultPurchasePrice: double.tryParse(_purchasePriceController.text.trim()) ?? 0,
+        defaultSellingPrice: double.tryParse(_sellingPriceController.text.trim()) ?? 0,
+        taxRate: double.tryParse(_taxRateController.text.trim()) ?? 0,
+        reorderLevel: 0,
+        isActive: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await _productService.createProduct(product);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product created successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add New Product'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Product Name *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.inventory_2),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter product name';
+                    }
+                    return null;
+                  },
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _skuController,
+                  decoration: const InputDecoration(
+                    labelText: 'SKU',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.qr_code),
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _unitController,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.straighten),
+                    hintText: 'e.g., piece, kg, box',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter unit';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _purchasePriceController,
+                        decoration: const InputDecoration(
+                          labelText: 'Purchase Price *',
+                          border: OutlineInputBorder(),
+                          prefixText: '\$ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Required';
+                          }
+                          final amount = double.tryParse(value.trim());
+                          if (amount == null || amount < 0) {
+                            return 'Invalid';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _sellingPriceController,
+                        decoration: const InputDecoration(
+                          labelText: 'Selling Price *',
+                          border: OutlineInputBorder(),
+                          prefixText: '\$ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Required';
+                          }
+                          final amount = double.tryParse(value.trim());
+                          if (amount == null || amount < 0) {
+                            return 'Invalid';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _taxRateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tax Rate (%)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.percent),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  ],
+                  validator: (value) {
+                    if (value != null && value.trim().isNotEmpty) {
+                      final rate = double.tryParse(value.trim());
+                      if (rate == null || rate < 0 || rate > 100) {
+                        return 'Enter valid rate (0-100)';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveProduct,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create'),
         ),
       ],
     );

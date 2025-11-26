@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/product_model.dart';
 import '../../../services/product/product_service.dart';
+import '../../../services/currency/currency_service.dart';
+import '../../providers/auth_provider.dart';
 import 'product_form_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
@@ -12,17 +15,34 @@ class ProductsScreen extends StatefulWidget {
 
 class _ProductsScreenState extends State<ProductsScreen> {
   final ProductService _productService = ProductService();
-  List<ProductModel> _products = [];
-  List<ProductModel> _filteredProducts = [];
+  final CurrencyService _currencyService = CurrencyService();
+  List<dynamic> _products = [];
+  List<dynamic> _filteredProducts = [];
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
   String _sortBy = 'name';
   String? _selectedCategory;
+  String _currencySymbol = '৳';
 
   @override
   void initState() {
     super.initState();
+    _loadCurrency();
     _loadProducts();
+  }
+
+  Future<void> _loadCurrency() async {
+    try {
+      final symbol = await _currencyService.getCurrencySymbol();
+      setState(() {
+        _currencySymbol = symbol;
+      });
+    } catch (e) {
+      // Use default if error
+      setState(() {
+        _currencySymbol = '৳';
+      });
+    }
   }
 
   @override
@@ -56,10 +76,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _filteredProducts = _products;
       } else {
         _filteredProducts = _products.where((product) {
-          final nameLower = product.name.toLowerCase();
-          final skuLower = product.sku?.toLowerCase() ?? '';
-          final barcodeLower = product.barcode?.toLowerCase() ?? '';
-          final categoryLower = product.category?.toLowerCase() ?? '';
+          final productMap = product as Map<String, dynamic>;
+          final nameLower = (productMap['name'] as String?)?.toLowerCase() ?? '';
+          final skuLower = (productMap['sku'] as String?)?.toLowerCase() ?? '';
+          final barcodeLower = (productMap['barcode'] as String?)?.toLowerCase() ?? '';
+          final categoryLower = (productMap['category'] as String?)?.toLowerCase() ?? '';
           final searchLower = query.toLowerCase();
 
           final matchesSearch = query.isEmpty ||
@@ -68,7 +89,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               barcodeLower.contains(searchLower);
 
           final matchesCategory = _selectedCategory == null ||
-              product.category == _selectedCategory;
+              productMap['category'] == _selectedCategory;
 
           return matchesSearch && matchesCategory;
         }).toList();
@@ -76,12 +97,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
     });
   }
 
-  Future<void> _deleteProduct(ProductModel product) async {
+  Future<void> _deleteProduct(Map<String, dynamic> product) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Product'),
-        content: Text('Are you sure you want to delete ${product.name}?'),
+        content: Text('Are you sure you want to delete ${product['name']}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -98,7 +119,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     if (confirm == true) {
       try {
-        await _productService.deactivateProduct(product.id!);
+        await _productService.deactivateProduct(product['id'] as int);
         _loadProducts();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -127,11 +148,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  void _navigateToEditProduct(ProductModel product) async {
+  void _navigateToEditProduct(Map<String, dynamic> product) async {
+    // Convert map to ProductModel for the form screen
+    final productModel = ProductModel.fromMap(product);
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ProductFormScreen(product: product),
+        builder: (context) => ProductFormScreen(product: productModel),
       ),
     );
     if (result == true) {
@@ -267,10 +290,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             ),
                             const SizedBox(height: 8),
                             if (_searchController.text.isEmpty && _selectedCategory == null)
-                              ElevatedButton.icon(
-                                onPressed: _navigateToAddProduct,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Add First Product'),
+                              Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  final canCreate = authProvider.currentUser?.hasPermission('create_product') ?? false;
+
+                                  return Tooltip(
+                                    message: canCreate ? '' : 'Admin access only',
+                                    child: ElevatedButton.icon(
+                                      onPressed: canCreate ? _navigateToAddProduct : null,
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('Add First Product'),
+                                    ),
+                                  );
+                                },
                               ),
                           ],
                         ),
@@ -279,9 +311,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         itemCount: _filteredProducts.length,
                         padding: const EdgeInsets.all(16),
                         itemBuilder: (context, index) {
-                          final product = _filteredProducts[index];
-                          final isLowStock = product.isLowStock();
+                          final productMap = _filteredProducts[index] as Map<String, dynamic>;
+                          final currentStock = ((productMap['current_stock'] as num?)?.toDouble() ?? 0.0);
+                          final reorderLevel = ((productMap['reorder_level'] as num?)?.toDouble() ?? 0.0);
+                          final isLowStock = currentStock <= reorderLevel && reorderLevel > 0;
                           final stockColor = isLowStock ? Colors.red : Colors.green;
+                          final productName = (productMap['name'] as String?) ?? 'Unknown';
+                          final productUnit = (productMap['unit'] as String?) ?? 'piece';
+                          final productSku = productMap['sku'] as String?;
+                          final productCategory = productMap['category'] as String?;
+                          final sellingPrice = ((productMap['default_selling_price'] as num?)?.toDouble() ?? 0.0);
+
+                          final lotsCount = ((productMap['lots_count'] as num?)?.toInt() ?? 0);
+                          final minPrice = ((productMap['min_price'] as num?)?.toDouble());
+                          final maxPrice = ((productMap['max_price'] as num?)?.toDouble());
+                          final hasPriceRange = minPrice != null && maxPrice != null && minPrice != maxPrice;
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -289,7 +333,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               leading: CircleAvatar(
                                 backgroundColor: stockColor,
                                 child: Text(
-                                  product.name.substring(0, 1).toUpperCase(),
+                                  productName.substring(0, 1).toUpperCase(),
                                   style: const TextStyle(color: Colors.white),
                                 ),
                               ),
@@ -297,30 +341,58 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      product.name,
+                                      productName,
                                       style: const TextStyle(fontWeight: FontWeight.bold),
                                     ),
                                   ),
+                                  if (lotsCount > 1)
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade100,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.blue.shade300),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.layers, size: 12, color: Colors.blue.shade700),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '$lotsCount lots',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.blue.shade700,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   if (isLowStock)
-                                    const Tooltip(
-                                      message: 'Low stock',
-                                      child: Icon(Icons.warning_amber, color: Colors.red, size: 20),
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8),
+                                      child: Tooltip(
+                                        message: 'Low stock',
+                                        child: Icon(Icons.warning_amber, color: Colors.red, size: 20),
+                                      ),
                                     ),
                                 ],
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (product.sku != null)
-                                    Text('SKU: ${product.sku}'),
-                                  if (product.category != null)
-                                    Text('Category: ${product.category}'),
+                                  if (productSku != null)
+                                    Text('SKU: $productSku'),
+                                  if (productCategory != null)
+                                    Text('Category: $productCategory'),
                                   Row(
                                     children: [
                                       const Icon(Icons.inventory_2, size: 14, color: Colors.grey),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'Stock: ${product.currentStock?.toStringAsFixed(2) ?? '0.00'} ${product.unit}',
+                                        'Stock: ${currentStock.toStringAsFixed(2)} $productUnit',
                                         style: TextStyle(
                                           color: stockColor,
                                           fontWeight: FontWeight.bold,
@@ -332,43 +404,62 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                     children: [
                                       const Icon(Icons.attach_money, size: 14, color: Colors.grey),
                                       const SizedBox(width: 4),
-                                      Text('Price: \$${product.defaultSellingPrice.toStringAsFixed(2)}'),
+                                      if (hasPriceRange)
+                                        Text('Price: $_currencySymbol${minPrice.toStringAsFixed(2)} - $_currencySymbol${maxPrice.toStringAsFixed(2)}')
+                                      else
+                                        Text('Price: $_currencySymbol${sellingPrice.toStringAsFixed(2)}'),
                                     ],
                                   ),
                                 ],
                               ),
-                              trailing: PopupMenuButton(
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('Edit'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, size: 20, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Delete', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (value) {
-                                  if (value == 'edit') {
-                                    _navigateToEditProduct(product);
-                                  } else if (value == 'delete') {
-                                    _deleteProduct(product);
+                              trailing: Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  final canEdit = authProvider.currentUser?.hasPermission('edit_product') ?? false;
+
+                                  if (!canEdit) {
+                                    return const SizedBox.shrink();
                                   }
+
+                                  return PopupMenuButton(
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _navigateToEditProduct(productMap);
+                                      } else if (value == 'delete') {
+                                        _deleteProduct(productMap);
+                                      }
+                                    },
+                                  );
                                 },
                               ),
-                              onTap: () => _navigateToEditProduct(product),
+                              onTap: () {
+                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                                final canEdit = authProvider.currentUser?.hasPermission('edit_product') ?? false;
+                                if (canEdit) {
+                                  _navigateToEditProduct(productMap);
+                                }
+                              },
                             ),
                           );
                         },
@@ -376,10 +467,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddProduct,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Product'),
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final canCreate = authProvider.currentUser?.hasPermission('create_product') ?? false;
+
+          if (!canCreate) {
+            // Show disabled button with tooltip for viewers
+            return Tooltip(
+              message: 'Admin access only',
+              child: Opacity(
+                opacity: 0.5,
+                child: FloatingActionButton.extended(
+                  onPressed: null,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Product'),
+                  backgroundColor: Colors.grey,
+                ),
+              ),
+            );
+          }
+
+          return FloatingActionButton.extended(
+            onPressed: _navigateToAddProduct,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Product'),
+          );
+        },
       ),
     );
   }

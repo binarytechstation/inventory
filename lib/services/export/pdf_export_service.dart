@@ -1,12 +1,23 @@
 import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-// Temporarily disabled due to Windows build issues with pdfium download
 import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import '../../core/utils/file_save_helper.dart';
+import '../currency/currency_service.dart';
 
 class PdfExportService {
+  final CurrencyService _currencyService = CurrencyService();
+
+  /// Convert currency symbol to PDF-friendly format
+  String _formatCurrencySymbol(String symbol) {
+    // Replace ৳ with Tk for PDF font compatibility
+    if (symbol == '৳') {
+      return 'Tk';
+    }
+    return symbol;
+  }
+
   /// Generate invoice PDF with all settings applied
   Future<File> generateInvoicePdf({
     required Map<String, dynamic> transaction,
@@ -16,6 +27,9 @@ class PdfExportService {
     required Map<String, dynamic> printSettings,
   }) async {
     final pdf = pw.Document();
+
+    // Get currency symbol from settings
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     // Get logo if enabled
     pw.ImageProvider? logo;
@@ -51,11 +65,23 @@ class PdfExportService {
             pw.SizedBox(height: 20),
 
             // Items Table
-            _buildItemsTable(transaction, bodySettings),
+            _buildItemsTable(transaction, bodySettings, currencySymbol),
             pw.SizedBox(height: 20),
 
-            // Totals
-            _buildTotals(transaction, bodySettings),
+            // Totals and QR Code
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // QR Code (if enabled)
+                if ((bodySettings['show_qr_code'] as int?) == 1) ...[
+                  _buildQRCode(transaction),
+                  pw.SizedBox(width: 20),
+                ],
+                pw.Expanded(
+                  child: _buildTotals(transaction, bodySettings, currencySymbol),
+                ),
+              ],
+            ),
             pw.Spacer(),
 
             // Footer
@@ -65,14 +91,25 @@ class PdfExportService {
       ),
     );
 
-    // Save to file
-    final directory = await getApplicationDocumentsDirectory();
+    // Save to file using cross-platform helper
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final fileName = 'invoice_${transaction['invoice_number']}_$timestamp.pdf';
-    final file = File('${directory.path}/$fileName');
+    final pdfBytes = await pdf.save();
 
-    await file.writeAsBytes(await pdf.save());
-    return file;
+    final savedPath = await FileSaveHelper.savePdf(
+      pdfBytes: pdfBytes,
+      fileName: fileName,
+    );
+
+    if (savedPath == null) {
+      // User cancelled or error occurred - save to temp directory
+      final tempPath = await FileSaveHelper.getTempFilePath(fileName);
+      final file = File(tempPath);
+      await file.writeAsBytes(pdfBytes);
+      return file;
+    }
+
+    return File(savedPath);
   }
 
   /// Generate sales report PDF
@@ -82,6 +119,9 @@ class PdfExportService {
     required DateTime endDate,
   }) async {
     final pdf = pw.Document();
+
+    // Get currency symbol from settings
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     pdf.addPage(
       pw.MultiPage(
@@ -119,27 +159,27 @@ class PdfExportService {
               ),
               _buildPdfRow(
                 'Subtotal',
-                '\$${(data['subtotal'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['subtotal'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Total Discount',
-                '\$${(data['total_discount'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_discount'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Total Tax',
-                '\$${(data['total_tax'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_tax'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Total Sales',
-                '\$${(data['total_sales'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_sales'] as num).toStringAsFixed(2)}',
                 isHeader: true,
               ),
               _buildPdfRow(
                 'Average Sale',
-                '\$${(data['average_sale'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['average_sale'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
             ],
@@ -156,6 +196,9 @@ class PdfExportService {
     List<Map<String, dynamic>> data,
   ) async {
     final pdf = pw.Document();
+
+    // Get currency symbol from settings
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     pdf.addPage(
       pw.MultiPage(
@@ -181,7 +224,7 @@ class PdfExportService {
                     item['sku'] ?? '',
                     ((item['current_stock'] as num?)?.toDouble() ?? 0)
                         .toStringAsFixed(1),
-                    '\$${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                    '$currencySymbol${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
                   ],
                 )
                 .toList(),
@@ -203,6 +246,9 @@ class PdfExportService {
     required DateTime endDate,
   }) async {
     final pdf = pw.Document();
+
+    // Get currency symbol from settings
+    final currencySymbol = _formatCurrencySymbol(await _currencyService.getCurrencySymbol());
 
     pdf.addPage(
       pw.MultiPage(
@@ -230,27 +276,27 @@ class PdfExportService {
             children: [
               _buildPdfRow(
                 'Total Revenue',
-                '\$${(data['total_revenue'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_revenue'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Cost of Goods Sold',
-                '\$${(data['total_cogs'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_cogs'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Gross Profit',
-                '\$${(data['gross_profit'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['gross_profit'] as num).toStringAsFixed(2)}',
                 isHeader: true,
               ),
               _buildPdfRow(
                 'Discounts Given',
-                '\$${(data['total_discounts'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['total_discounts'] as num).toStringAsFixed(2)}',
                 isHeader: false,
               ),
               _buildPdfRow(
                 'Net Profit',
-                '\$${(data['net_profit'] as num).toStringAsFixed(2)}',
+                '$currencySymbol${(data['net_profit'] as num).toStringAsFixed(2)}',
                 isHeader: true,
               ),
               _buildPdfRow(
@@ -353,6 +399,7 @@ class PdfExportService {
   pw.Widget _buildItemsTable(
     Map<String, dynamic> transaction,
     Map<String, dynamic> settings,
+    String currencySymbol,
   ) {
     final items = transaction['items'] as List<Map<String, dynamic>>? ?? [];
 
@@ -363,8 +410,8 @@ class PdfExportService {
             (item) => [
               item['product_name'] ?? '',
               (item['quantity'] ?? 0).toString(),
-              '\$${(item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-              '\$${(item['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              '$currencySymbol${(item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              '$currencySymbol${(item['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
             ],
           )
           .toList(),
@@ -378,6 +425,7 @@ class PdfExportService {
   pw.Widget _buildTotals(
     Map<String, dynamic> transaction,
     Map<String, dynamic> settings,
+    String currencySymbol,
   ) {
     return pw.Container(
       alignment: pw.Alignment.centerRight,
@@ -388,27 +436,45 @@ class PdfExportService {
             if ((settings['show_subtotal'] as int?) == 1)
               _buildTotalRow(
                 settings['subtotal_label'] as String? ?? 'Subtotal',
-                '\$${(transaction['subtotal'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                '$currencySymbol${(transaction['subtotal'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
               ),
             if ((settings['show_discount_total'] as int?) == 1 &&
                 (transaction['discount_amount'] as num? ?? 0) > 0)
               _buildTotalRow(
                 settings['discount_label'] as String? ?? 'Discount',
-                '\$${(transaction['discount_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                '$currencySymbol${(transaction['discount_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
               ),
             if ((settings['show_tax_total'] as int?) == 1)
               _buildTotalRow(
                 settings['tax_label'] as String? ?? 'Tax',
-                '\$${(transaction['tax_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                '$currencySymbol${(transaction['tax_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
               ),
             pw.Divider(),
             _buildTotalRow(
               settings['grand_total_label'] as String? ?? 'Grand Total',
-              '\$${(transaction['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              '$currencySymbol${(transaction['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
               isBold: true,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Helper: Build QR Code
+  pw.Widget _buildQRCode(Map<String, dynamic> transaction) {
+    // Create QR code data with invoice information
+    final qrData = 'Invoice: ${transaction['invoice_number']}\n'
+        'Date: ${transaction['transaction_date']}\n'
+        'Amount: ${transaction['total_amount']}\n'
+        'Party: ${transaction['party_name'] ?? 'N/A'}';
+
+    return pw.Container(
+      width: 100,
+      height: 100,
+      child: pw.BarcodeWidget(
+        barcode: pw.Barcode.qrCode(),
+        data: qrData,
       ),
     );
   }
@@ -507,13 +573,28 @@ class PdfExportService {
 
   // Helper: Save PDF
   Future<File> _savePdf(pw.Document pdf, String prefix) async {
-    final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final fileName = '${prefix}_$timestamp.pdf';
-    final file = File('${directory.path}/$fileName');
+    final pdfBytes = await pdf.save();
 
-    await file.writeAsBytes(await pdf.save());
-    return file;
+    // Use FileSaveHelper for cross-platform saving
+    // Windows: Saves directly to Documents (existing behavior)
+    // macOS/Linux: Shows save dialog for proper permissions
+    final savedPath = await FileSaveHelper.savePdf(
+      pdfBytes: pdfBytes,
+      fileName: fileName,
+    );
+
+    if (savedPath == null) {
+      // User cancelled or error occurred
+      // Fallback: save to temp directory
+      final tempPath = await FileSaveHelper.getTempFilePath(fileName);
+      final file = File(tempPath);
+      await file.writeAsBytes(pdfBytes);
+      return file;
+    }
+
+    return File(savedPath);
   }
 
   // Helper: Format Date
