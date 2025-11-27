@@ -18,7 +18,10 @@
       "Bash(pkill:*)",
       "Bash(flutter clean:*)",
       "Bash(nc:*)",
-      "Bash(flutter build:*)"
+      "Bash(flutter build:*)",
+      "Bash(for screen in suppliers customers transactions held_bills reports users settings)",
+      "Bash(do file=/Users/jit/inventory/lib/ui/screens/$screen/$screen_screen.dart if [ -f $file ])",
+      "Bash(then echo '=== $screen ===' grep -A 5 'void initState' $file)"
     ],
     "deny": [],
     "ask": []

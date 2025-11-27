@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -419,6 +419,27 @@ class DatabaseHelper {
       // await db.execute('DROP TABLE IF EXISTS transaction_lines_old');
 
       print('Migration to lot-based inventory system complete!');
+    }
+
+    if (oldVersion < 7) {
+      // Migration from version 6 to 7 - Add selling_price column to products table
+      print('Adding selling_price column to products table (v7)...');
+
+      final productsColumns = await db.rawQuery('PRAGMA table_info(products)');
+      final hasSellingPrice = productsColumns.any((col) => col['name'] == 'selling_price');
+
+      if (!hasSellingPrice) {
+        await db.execute('ALTER TABLE products ADD COLUMN selling_price REAL');
+
+        // Set default selling_price = unit_price * 1.2 (20% markup)
+        await db.execute('''
+          UPDATE products
+          SET selling_price = unit_price * 1.2
+          WHERE selling_price IS NULL
+        ''');
+      }
+
+      print('Migration to add selling_price complete!');
     }
   }
 

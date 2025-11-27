@@ -97,6 +97,7 @@ class DatabaseSchema {
       lot_id INTEGER NOT NULL,
       product_name TEXT NOT NULL,
       unit_price REAL NOT NULL,
+      selling_price REAL,
       product_image TEXT,
       product_description TEXT,
       unit TEXT DEFAULT 'piece',

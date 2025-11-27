@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'transaction_form_screen.dart';
 import 'purchase_order_screen.dart';
+import '../pos/pos_screen.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/currency/currency_service.dart';
 import '../../../services/invoice/invoice_service.dart';
@@ -41,8 +41,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
           if (type == 'BUY') {
             return const PurchaseOrderScreen();
           }
-          // Use old form for SELL transactions
-          return TransactionFormScreen(transactionType: type);
+          // Use POS screen for SELL transactions (same interface as Point of Sale)
+          return const POSScreen();
         },
       ),
     );

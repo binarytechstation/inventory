@@ -198,7 +198,7 @@ class _CurrencySettingsScreenState extends State<CurrencySettingsScreen> {
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Changing currency will update all invoices, reports, and transactions throughout the app.',
+                            'Default currency is Bangladesh Taka (৳). Other currencies are disabled and for advanced settings only.',
                             style: TextStyle(color: Colors.blue),
                           ),
                         ),

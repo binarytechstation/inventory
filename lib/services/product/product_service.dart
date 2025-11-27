@@ -12,10 +12,11 @@ class ProductService {
   Future<List<Map<String, dynamic>>> getAllProductsAggregated({String sortBy = 'product_name'}) async {
     final db = await _dbHelper.database;
 
-    // Aggregate products across all lots
+    // Aggregate products across all lots BY PRODUCT NAME
+    // This groups same product names together even if they have different product_ids
     final maps = await db.rawQuery('''
       SELECT
-        p.product_id,
+        MIN(p.product_id) as product_id,
         p.product_name,
         p.unit,
         p.category,
@@ -32,7 +33,7 @@ class ProductService {
       FROM products p
       INNER JOIN stock s ON p.product_id = s.product_id AND p.lot_id = s.lot_id
       WHERE p.is_active = 1
-      GROUP BY p.product_id, p.product_name, p.unit, p.category, p.product_image, p.product_description
+      GROUP BY p.product_name, p.unit, p.category, p.product_image, p.product_description
       ORDER BY p.$sortBy ASC
     ''');
 
@@ -69,6 +70,128 @@ class ProductService {
     ''', [lotId]);
 
     return maps;
+  }
+
+  // Get all lots for a specific product (by product_name)
+  Future<List<Map<String, dynamic>>> getAllLotsForProduct(String productName) async {
+    final db = await _dbHelper.database;
+
+    final maps = await db.rawQuery('''
+      SELECT
+        p.product_id,
+        p.lot_id,
+        p.product_name,
+        p.unit_price,
+        p.selling_price,
+        p.unit,
+        p.category,
+        p.sku,
+        p.barcode,
+        p.product_image,
+        p.product_description,
+        s.count as current_stock,
+        (s.count - COALESCE(s.reserved_quantity, 0)) as available_stock,
+        s.reorder_level,
+        l.received_date,
+        l.description as lot_description
+      FROM products p
+      INNER JOIN stock s ON p.product_id = s.product_id AND p.lot_id = s.lot_id
+      INNER JOIN lots l ON p.lot_id = l.lot_id
+      WHERE p.product_name = ?
+        AND p.is_active = 1
+      ORDER BY l.received_date DESC, p.lot_id DESC
+    ''', [productName]);
+
+    return maps;
+  }
+
+  // Get all unique product names for autocomplete
+  Future<List<String>> getAllProductNames() async {
+    final db = await _dbHelper.database;
+
+    final maps = await db.rawQuery('''
+      SELECT DISTINCT product_name
+      FROM products
+      WHERE is_active = 1
+      ORDER BY product_name ASC
+    ''');
+
+    return maps.map((m) => m['product_name'] as String).toList();
+  }
+
+  // Check if a product name already exists
+  Future<bool> productNameExists(String productName) async {
+    final db = await _dbHelper.database;
+
+    final maps = await db.query(
+      'products',
+      where: 'product_name = ? AND is_active = 1',
+      whereArgs: [productName],
+      limit: 1,
+    );
+
+    return maps.isNotEmpty;
+  }
+
+  // Get product details by name (for reusing in new lots)
+  Future<Map<String, dynamic>?> getProductByName(String productName) async {
+    final db = await _dbHelper.database;
+
+    final maps = await db.rawQuery('''
+      SELECT
+        product_name,
+        unit,
+        category,
+        product_image,
+        product_description
+      FROM products
+      WHERE product_name = ? AND is_active = 1
+      LIMIT 1
+    ''', [productName]);
+
+    return maps.isNotEmpty ? maps.first : null;
+  }
+
+  // Update product details (description, category, etc. - NOT lot/inventory data)
+  Future<void> updateProductDetails({
+    required String productName,
+    String? newName,
+    String? category,
+    String? description,
+    String? imagePath,
+  }) async {
+    final db = await _dbHelper.database;
+
+    final updateData = <String, dynamic>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    if (newName != null) updateData['product_name'] = newName;
+    if (category != null) updateData['category'] = category;
+    if (description != null) updateData['product_description'] = description;
+    if (imagePath != null) updateData['product_image'] = imagePath;
+
+    await db.update(
+      'products',
+      updateData,
+      where: 'product_name = ?',
+      whereArgs: [productName],
+    );
+  }
+
+  // Soft delete product by name (sets is_active = 0 for all lots)
+  Future<void> deleteProductByName(String productName) async {
+    final db = await _dbHelper.database;
+
+    await db.update(
+      'products',
+      {
+        'is_active': 0,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'product_name = ?',
+      whereArgs: [productName],
+    );
   }
 
   // Get product details across all lots
@@ -566,5 +689,132 @@ class ProductService {
     }
 
     return rowsAffected;
+  }
+
+  /// Update lot-wise data for a specific product in a specific lot
+  Future<void> updateLotData({
+    required int productId,
+    required int lotId,
+    String? lotName,
+    double? unitPrice,
+    double? sellingPrice,
+    double? currentStock,
+    String? receivedDate,
+    String? notes,
+  }) async {
+    final db = await _dbHelper.database;
+
+    await db.transaction((txn) async {
+      final now = DateTime.now().toIso8601String();
+
+      // Update lot name (product name) if provided
+      if (lotName != null) {
+        await txn.update(
+          'products',
+          {
+            'product_name': lotName,
+            'updated_at': now,
+          },
+          where: 'product_id = ? AND lot_id = ?',
+          whereArgs: [productId, lotId],
+        );
+      }
+
+      // Update product prices if provided
+      final Map<String, dynamic> priceUpdates = {'updated_at': now};
+      if (unitPrice != null) priceUpdates['unit_price'] = unitPrice;
+      if (sellingPrice != null) priceUpdates['selling_price'] = sellingPrice;
+
+      if (priceUpdates.length > 1) {
+        await txn.update(
+          'products',
+          priceUpdates,
+          where: 'product_id = ? AND lot_id = ?',
+          whereArgs: [productId, lotId],
+        );
+      }
+
+      // Update stock if provided
+      if (currentStock != null) {
+        // Get current stock for history
+        final stockQuery = await txn.query(
+          'stock',
+          where: 'product_id = ? AND lot_id = ?',
+          whereArgs: [productId, lotId],
+        );
+
+        final oldStock = stockQuery.isNotEmpty
+            ? (stockQuery.first['count'] as num?)?.toDouble() ?? 0.0
+            : 0.0;
+
+        await txn.update(
+          'stock',
+          {
+            'count': currentStock,
+            'last_stock_update': now,
+            'updated_at': now,
+          },
+          where: 'product_id = ? AND lot_id = ?',
+          whereArgs: [productId, lotId],
+        );
+
+        // Create history record
+        await txn.insert('lot_history', {
+          'lot_id': lotId,
+          'product_id': productId,
+          'action': 'MANUAL_ADJUSTMENT',
+          'quantity_change': currentStock - oldStock,
+          'quantity_before': oldStock,
+          'quantity_after': currentStock,
+          'reference_type': 'LOT_EDIT',
+          'notes': notes ?? 'Manual lot adjustment via UI',
+          'created_at': now,
+        });
+      }
+
+      // Update lot received date if provided
+      if (receivedDate != null) {
+        await txn.update(
+          'lots',
+          {
+            'received_date': receivedDate,
+            'updated_at': now,
+          },
+          where: 'lot_id = ?',
+          whereArgs: [lotId],
+        );
+      }
+
+      // Update lot description/notes if provided
+      if (notes != null) {
+        await txn.update(
+          'lots',
+          {
+            'description': notes,
+            'updated_at': now,
+          },
+          where: 'lot_id = ?',
+          whereArgs: [lotId],
+        );
+      }
+    });
+  }
+
+  /// Get products grouped by category
+  Future<Map<String, List<Map<String, dynamic>>>> getProductsGroupedByCategory() async {
+    final products = await getAllProducts();
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+
+    for (var product in products) {
+      final productMap = product as Map<String, dynamic>;
+      final category = (productMap['category'] as String?) ?? 'Uncategorized';
+
+      if (!grouped.containsKey(category)) {
+        grouped[category] = [];
+      }
+      grouped[category]!.add(productMap);
+    }
+
+    return grouped;
   }
 }

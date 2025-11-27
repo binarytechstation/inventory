@@ -4,6 +4,7 @@ import '../../../data/models/supplier_model.dart';
 import '../../../services/supplier/supplier_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/currency/currency_service.dart';
+import '../../../services/product/product_service.dart';
 
 /// New Purchase Order Screen - Lot-based product entry
 /// Creates a new lot and adds products to it in one transaction
@@ -590,11 +591,17 @@ class _AddProductDialogState extends State<_AddProductDialog> {
   final _categoryController = TextEditingController();
   final _descriptionController = TextEditingController();
 
+  final ProductService _productService = ProductService();
+  List<String> _existingProductNames = [];
+  bool _isLoadingProducts = true;
+  bool _isExistingProduct = false;
+
   String _unit = 'piece';
 
   @override
   void initState() {
     super.initState();
+    _loadExistingProducts();
 
     if (widget.existingProduct != null) {
       final p = widget.existingProduct!;
@@ -608,6 +615,42 @@ class _AddProductDialogState extends State<_AddProductDialog> {
       _categoryController.text = p['category'] ?? '';
       _descriptionController.text = p['description'] ?? '';
       _unit = p['unit'] ?? 'piece';
+    }
+  }
+
+  Future<void> _loadExistingProducts() async {
+    try {
+      final names = await _productService.getAllProductNames();
+      if (mounted) {
+        setState(() {
+          _existingProductNames = names;
+          _isLoadingProducts = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingProducts = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onProductNameSelected(String productName) async {
+    try {
+      final productDetails = await _productService.getProductByName(productName);
+      if (productDetails != null && mounted) {
+        setState(() {
+          _isExistingProduct = true;
+          _categoryController.text = productDetails['category'] ?? '';
+          _descriptionController.text = productDetails['product_description'] ?? '';
+          _unit = productDetails['unit'] ?? 'piece';
+          // Note: SKU, barcode, prices are NOT auto-filled for existing products
+          // because each lot can have different prices
+        });
+      }
+    } catch (e) {
+      // Error loading product details
     }
   }
 
@@ -656,13 +699,89 @@ class _AddProductDialogState extends State<_AddProductDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Product Name *',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                // Product Name Autocomplete (allows both new and existing)
+                RawAutocomplete<String>(
+                  textEditingController: _nameController,
+                  focusNode: FocusNode(),
+                  optionsBuilder: (textEditingValue) {
+                    if (textEditingValue.text.isEmpty) {
+                      return const Iterable<String>.empty();
+                    }
+                    return _existingProductNames.where((name) {
+                      return name.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                    });
+                  },
+                  onSelected: (String selection) {
+                    _nameController.text = selection;
+                    _onProductNameSelected(selection);
+                  },
+                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                    // Listen to changes to detect existing vs new
+                    textEditingController.addListener(() {
+                      final text = textEditingController.text;
+                      final isExisting = _existingProductNames.contains(text);
+                      if (isExisting != _isExistingProduct) {
+                        setState(() {
+                          _isExistingProduct = isExisting;
+                        });
+                        if (isExisting) {
+                          _onProductNameSelected(text);
+                        }
+                      }
+                    });
+
+                    return TextFormField(
+                      controller: textEditingController,
+                      focusNode: focusNode,
+                      decoration: InputDecoration(
+                        labelText: 'Product Name *',
+                        border: const OutlineInputBorder(),
+                        hintText: 'Type to search existing or enter new',
+                        helperText: _isExistingProduct
+                            ? 'Existing product - category and unit auto-filled'
+                            : 'New product - enter all details',
+                        helperStyle: TextStyle(
+                          color: _isExistingProduct ? Colors.blue : Colors.grey,
+                          fontSize: 11,
+                        ),
+                        suffixIcon: _isLoadingProducts
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : null,
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 4,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 200, maxWidth: 300),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (context, index) {
+                              final option = options.elementAt(index);
+                              return ListTile(
+                                dense: true,
+                                title: Text(option),
+                                onTap: () => onSelected(option),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 Row(

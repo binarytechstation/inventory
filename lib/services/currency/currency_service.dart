@@ -44,8 +44,8 @@ class CurrencyService {
       return _cachedCurrencySymbol!;
     }
 
-    // Default fallback
-    _cachedCurrencySymbol = '\$';
+    // Default fallback to Bangladesh Taka
+    _cachedCurrencySymbol = '৳';
     return _cachedCurrencySymbol!;
   }
 
@@ -85,8 +85,8 @@ class CurrencyService {
       return _cachedCurrencyCode!;
     }
 
-    // Default fallback
-    _cachedCurrencyCode = 'USD';
+    // Default fallback to Bangladesh Taka
+    _cachedCurrencyCode = 'BDT';
     return _cachedCurrencyCode!;
   }
 

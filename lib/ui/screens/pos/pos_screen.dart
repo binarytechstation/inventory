@@ -6,7 +6,6 @@ import '../../../services/customer/customer_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/invoice/invoice_service.dart';
 import '../../../services/currency/currency_service.dart';
-import '../../../data/models/product_model.dart';
 import '../../../data/models/customer_model.dart';
 
 class POSScreen extends StatefulWidget {
@@ -30,7 +29,7 @@ class _POSScreenState extends State<POSScreen> {
   List<dynamic> _filteredProducts = [];
   List<CustomerModel> _customers = [];
 
-  final Map<int, _CartItem> _cart = {};
+  final Map<String, _CartItem> _cart = {}; // Changed from int to String key for (productId_lotId)
   CustomerModel? _selectedCustomer;
   String _paymentMethod = 'cash';
   bool _isPercentageDiscount = true;
@@ -109,50 +108,37 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   void _addToCart(Map<String, dynamic> productMap) async {
-    // Convert map to ProductModel for cart operations
-    final product = ProductModel.fromMap(productMap);
+    // Get product name and fetch all lots
+    final productName = (productMap['name'] as String?) ?? 'Unknown';
+    final lots = await _productService.getAllLotsForProduct(productName);
 
-    // Check stock
-    final stock = await _productService.getProductStock(product.id!);
-    final currentQty = _cart[product.id]?.quantity ?? 0;
+    if (!mounted) return;
 
-    if (currentQty >= stock) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Insufficient stock')),
-        );
-      }
+    if (lots.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No lots available for this product')),
+      );
       return;
     }
 
+    // Show lot selection dialog
+    await _showLotSelectionDialog(productName, lots);
+  }
+
+  void _removeFromCart(String cartKey) {
     setState(() {
-      if (_cart.containsKey(product.id)) {
-        _cart[product.id]!.quantity++;
-      } else {
-        _cart[product.id!] = _CartItem(
-          product: product,
-          quantity: 1,
-          unitPrice: product.defaultSellingPrice,
-        );
-      }
+      _cart.remove(cartKey);
     });
   }
 
-  void _removeFromCart(int productId) {
-    setState(() {
-      _cart.remove(productId);
-    });
-  }
-
-  void _updateQuantity(int productId, double newQuantity) async {
+  void _updateQuantity(String cartKey, double newQuantity, double availableStock) async {
     if (newQuantity <= 0) {
-      _removeFromCart(productId);
+      _removeFromCart(cartKey);
       return;
     }
 
     // Check stock
-    final stock = await _productService.getProductStock(productId);
-    if (newQuantity > stock) {
+    if (newQuantity > availableStock) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Insufficient stock')),
@@ -162,8 +148,554 @@ class _POSScreenState extends State<POSScreen> {
     }
 
     setState(() {
-      _cart[productId]?.quantity = newQuantity;
+      _cart[cartKey]?.quantity = newQuantity;
     });
+  }
+
+  // Show lot selection dialog
+  Future<void> _showLotSelectionDialog(String productName, List<Map<String, dynamic>> lots) async {
+    // Track selected lots with quantities and prices
+    final Map<int, TextEditingController> quantityControllers = {};
+    final Map<int, TextEditingController> priceControllers = {};
+    final Map<int, bool> selectedLots = {};
+
+    // Get product image from first lot
+    final productImage = lots.isNotEmpty ? (lots.first['product_image'] as String?) : null;
+
+    // Initialize controllers with SELLING PRICE (not unit_price)
+    for (final lot in lots) {
+      final lotId = lot['lot_id'] as int;
+      final unitPrice = ((lot['unit_price'] as num?)?.toDouble() ?? 0.0);
+      final sellingPrice = ((lot['selling_price'] as num?)?.toDouble() ?? unitPrice * 1.2);
+      quantityControllers[lotId] = TextEditingController();
+      priceControllers[lotId] = TextEditingController(text: sellingPrice.toStringAsFixed(2));
+      selectedLots[lotId] = false;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                // Product Image
+                if (productImage != null)
+                  Container(
+                    width: 60,
+                    height: 60,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                      image: DecorationImage(
+                        image: FileImage(File(productImage)),
+                        fit: BoxFit.cover,
+                        onError: (_, __) => const SizedBox(),
+                      ),
+                    ),
+                  ),
+                // Title
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Lot(s) for $productName',
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${lots.length} lot(s) available',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: lots.map((lot) {
+                    final lotId = lot['lot_id'] as int;
+                    final availableStock = ((lot['available_stock'] as num?)?.toDouble() ?? 0.0);
+                    final unitPrice = ((lot['unit_price'] as num?)?.toDouble() ?? 0.0);
+                    final sellingPrice = ((lot['selling_price'] as num?)?.toDouble() ?? unitPrice * 1.2);
+                    final unit = (lot['unit'] as String?) ?? 'piece';
+                    final receivedDate = lot['received_date'] as String?;
+                    final isSelected = selectedLots[lotId] ?? false;
+
+                    // Format received date
+                    String formattedDate = 'Unknown';
+                    if (receivedDate != null) {
+                      try {
+                        final date = DateTime.parse(receivedDate);
+                        formattedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                      } catch (e) {
+                        formattedDate = receivedDate;
+                      }
+                    }
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: isSelected ? 4 : 2,
+                      color: isSelected ? Colors.blue[50] : null,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isSelected ? Colors.blue : Colors.grey.shade300,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: isSelected,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      selectedLots[lotId] = value ?? false;
+                                      if (!value!) {
+                                        quantityControllers[lotId]?.clear();
+                                      }
+                                    });
+                                  },
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade100,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              'Lot #$lotId',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                                color: Colors.blue.shade900,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            formattedDate,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.inventory_2, size: 14, color: availableStock > 0 ? Colors.green : Colors.red),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Stock: ${availableStock.toStringAsFixed(2)} $unit',
+                                            style: TextStyle(
+                                              color: availableStock > 0 ? Colors.green.shade700 : Colors.red.shade700,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.shopping_cart, size: 14, color: Colors.grey[600]),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Purchase: $_currencySymbol${unitPrice.toStringAsFixed(2)}',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[700],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.sell, size: 14, color: Colors.green[700]),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Selling: $_currencySymbol${sellingPrice.toStringAsFixed(2)}',
+                                                  style: TextStyle(
+                                                    color: Colors.green[700],
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (isSelected) ...[
+                              const Divider(height: 16),
+                              Row(
+                                children: [
+                                  // Quantity Field
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextField(
+                                      controller: quantityControllers[lotId],
+                                      decoration: InputDecoration(
+                                        labelText: 'Quantity ($unit)',
+                                        border: const OutlineInputBorder(),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        suffixText: '/ ${availableStock.toStringAsFixed(2)}',
+                                        prefixIcon: const Icon(Icons.shopping_basket, size: 20),
+                                      ),
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      onChanged: (value) {
+                                        // Validate quantity
+                                        final qty = double.tryParse(value) ?? 0;
+                                        if (qty > availableStock) {
+                                          quantityControllers[lotId]?.text = availableStock.toString();
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Purchase Price (Read-only)
+                                  Expanded(
+                                    child: TextField(
+                                      controller: TextEditingController(text: unitPrice.toStringAsFixed(2)),
+                                      decoration: InputDecoration(
+                                        labelText: 'Purchase Price',
+                                        border: const OutlineInputBorder(),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        prefixText: _currencySymbol,
+                                        filled: true,
+                                        fillColor: Colors.grey.shade100,
+                                        prefixIcon: const Icon(Icons.shopping_cart, size: 20),
+                                      ),
+                                      enabled: false,
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Selling Price (Editable)
+                                  Expanded(
+                                    child: TextField(
+                                      controller: priceControllers[lotId],
+                                      decoration: InputDecoration(
+                                        labelText: 'Selling Price',
+                                        border: const OutlineInputBorder(),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        prefixText: _currencySymbol,
+                                        prefixIcon: Icon(Icons.sell, size: 20, color: Colors.green.shade700),
+                                      ),
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      style: TextStyle(
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  // Dispose controllers
+                  for (final controller in quantityControllers.values) {
+                    controller.dispose();
+                  }
+                  for (final controller in priceControllers.values) {
+                    controller.dispose();
+                  }
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  // Validate and add selected lots to cart
+                  bool hasValidSelection = false;
+
+                  for (final lot in lots) {
+                    final lotId = lot['lot_id'] as int;
+                    final productId = lot['product_id'] as int;
+                    final isSelected = selectedLots[lotId] ?? false;
+
+                    if (isSelected) {
+                      final quantityText = quantityControllers[lotId]?.text ?? '';
+                      final quantity = double.tryParse(quantityText) ?? 0;
+
+                      final priceText = priceControllers[lotId]?.text ?? '';
+                      final editedPrice = double.tryParse(priceText) ?? 0;
+
+                      if (quantity > 0 && editedPrice > 0) {
+                        final availableStock = ((lot['available_stock'] as num?)?.toDouble() ?? 0.0);
+                        final unit = (lot['unit'] as String?) ?? 'piece';
+                        final receivedDate = lot['received_date'] as String?;
+
+                        // Create cart key: productId_lotId
+                        final cartKey = '${productId}_$lotId';
+
+                        // Add to cart with edited price
+                        setState(() {
+                          _cart[cartKey] = _CartItem(
+                            productId: productId,
+                            lotId: lotId,
+                            productName: productName,
+                            quantity: quantity,
+                            unitPrice: editedPrice,  // Use edited price from controller
+                            unit: unit,
+                            lotNumber: lotId,
+                            receivedDate: receivedDate,
+                            availableStock: availableStock,
+                          );
+                        });
+
+                        hasValidSelection = true;
+                      }
+                    }
+                  }
+
+                  // Dispose controllers
+                  for (final controller in quantityControllers.values) {
+                    controller.dispose();
+                  }
+                  for (final controller in priceControllers.values) {
+                    controller.dispose();
+                  }
+
+                  Navigator.pop(context);
+
+                  if (hasValidSelection) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Lot(s) added to cart')),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please select lot(s) and enter quantity')),
+                    );
+                  }
+                },
+                child: const Text('Add to Cart'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // Show add customer dialog
+  Future<void> _showAddCustomerDialog() async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final addressController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.person_add, color: Colors.green.shade700),
+            ),
+            const SizedBox(width: 12),
+            const Text('Add New Customer'),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Customer Name *',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: phoneController,
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number *',
+                    prefixIcon: const Icon(Icons.phone),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email (Optional)',
+                    prefixIcon: const Icon(Icons.email),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: addressController,
+                  decoration: InputDecoration(
+                    labelText: 'Address (Optional)',
+                    prefixIcon: const Icon(Icons.location_on),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              nameController.dispose();
+              phoneController.dispose();
+              emailController.dispose();
+              addressController.dispose();
+              Navigator.pop(context, false);
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.save),
+            label: const Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      final name = nameController.text.trim();
+      final phone = phoneController.text.trim();
+
+      if (name.isEmpty || phone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Name and phone are required')),
+        );
+      } else {
+        try {
+          // Create customer model
+          final customer = CustomerModel(
+            name: name,
+            phone: phone,
+            email: emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+            address: addressController.text.trim().isEmpty ? null : addressController.text.trim(),
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+
+          // Save customer
+          final customerId = await _customerService.createCustomer(customer);
+
+          // Reload customers
+          final customers = await _customerService.getAllCustomers();
+
+          // Select the newly created customer
+          final newCustomer = customers.firstWhere(
+            (c) => c.id == customerId,
+            orElse: () => customers.first,
+          );
+
+          setState(() {
+            _customers = customers;
+            _selectedCustomer = newCustomer;
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Customer "$name" added successfully')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error adding customer: $e')),
+            );
+          }
+        }
+      }
+    }
+
+    nameController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    addressController.dispose();
   }
 
   double _calculateSubtotal() {
@@ -213,13 +745,15 @@ class _POSScreenState extends State<POSScreen> {
 
     try {
       final items = _cart.entries.map((entry) {
+        final item = entry.value;
         return {
-          'product_id': entry.key,
-          'quantity': entry.value.quantity,
-          'unit_price': entry.value.unitPrice,
+          'product_id': item.productId,
+          'lot_id': item.lotId,
+          'quantity': item.quantity,
+          'unit_price': item.unitPrice,
           'discount': 0.0,
           'tax': 0.0,
-          'subtotal': entry.value.quantity * entry.value.unitPrice,
+          'subtotal': item.quantity * item.unitPrice,
         };
       }).toList();
 
@@ -491,7 +1025,17 @@ class _POSScreenState extends State<POSScreen> {
   Widget _buildProductCard(Map<String, dynamic> productMap) {
     final productName = (productMap['name'] as String?) ?? 'Unknown';
     final sellingPrice = ((productMap['default_selling_price'] as num?)?.toDouble() ?? 0.0);
-    final productSku = productMap['sku'] as String?;
+    final lotsCount = ((productMap['lots_count'] as num?)?.toInt() ?? 0);
+    final minPrice = ((productMap['min_price'] as num?)?.toDouble());
+    final maxPrice = ((productMap['max_price'] as num?)?.toDouble());
+
+    // Show price range if there are multiple lots with different prices
+    String priceDisplay;
+    if (lotsCount > 1 && minPrice != null && maxPrice != null && minPrice != maxPrice) {
+      priceDisplay = '$_currencySymbol${minPrice.toStringAsFixed(2)} - $_currencySymbol${maxPrice.toStringAsFixed(2)}';
+    } else {
+      priceDisplay = '$_currencySymbol${sellingPrice.toStringAsFixed(2)}';
+    }
 
     return Card(
       elevation: 2,
@@ -506,16 +1050,40 @@ class _POSScreenState extends State<POSScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Product image placeholder
-              Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Icon(Icons.inventory_2, size: 40, color: Colors.grey),
-                ),
+              // Product image placeholder with lot badge
+              Stack(
+                children: [
+                  Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.inventory_2, size: 40, color: Colors.grey),
+                    ),
+                  ),
+                  if (lotsCount > 1)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$lotsCount lots',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 8),
               // Product name
@@ -529,21 +1097,22 @@ class _POSScreenState extends State<POSScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               const Spacer(),
-              // Price and SKU
+              // Price
               Text(
-                '$_currencySymbol${sellingPrice.toStringAsFixed(2)}',
+                priceDisplay,
                 style: const TextStyle(
                   color: Colors.green,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 14,
                 ),
               ),
-              if (productSku != null)
+              if (lotsCount > 1)
                 Text(
-                  'SKU: $productSku',
+                  'Multiple lots',
                   style: TextStyle(
-                    color: Colors.grey[600],
+                    color: Colors.blue[700],
                     fontSize: 11,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
             ],
@@ -563,12 +1132,30 @@ class _POSScreenState extends State<POSScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Customer',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Customer',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _showAddCustomerDialog,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Customer'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<CustomerModel>(
+                value: _selectedCustomer,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -579,6 +1166,7 @@ class _POSScreenState extends State<POSScreen> {
                     horizontal: 12,
                     vertical: 8,
                   ),
+                  prefixIcon: const Icon(Icons.person),
                 ),
                 hint: const Text('Select customer'),
                 items: _customers.map((customer) {
@@ -630,6 +1218,8 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   Widget _buildCartItem(_CartItem item) {
+    final cartKey = '${item.productId}_${item.lotId}';
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Padding(
@@ -641,16 +1231,30 @@ class _POSScreenState extends State<POSScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(
-                    item.product.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.productName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Lot #${item.lotNumber}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, size: 20),
-                  onPressed: () => _removeFromCart(item.product.id!),
+                  onPressed: () => _removeFromCart(cartKey),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
@@ -671,27 +1275,32 @@ class _POSScreenState extends State<POSScreen> {
                         icon: const Icon(Icons.remove, size: 16),
                         onPressed: () {
                           _updateQuantity(
-                            item.product.id!,
+                            cartKey,
                             item.quantity - 1,
+                            item.availableStock,
                           );
                         },
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(),
                       ),
                       SizedBox(
-                        width: 40,
+                        width: 50,
                         child: Text(
-                          item.quantity.toString(),
+                          '${item.quantity} ${item.unit}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.add, size: 16),
                         onPressed: () {
                           _updateQuantity(
-                            item.product.id!,
+                            cartKey,
                             item.quantity + 1,
+                            item.availableStock,
                           );
                         },
                         padding: const EdgeInsets.all(4),
@@ -707,7 +1316,7 @@ class _POSScreenState extends State<POSScreen> {
                 Expanded(
                   child: Text(
                     '$_currencySymbol${item.unitPrice.toStringAsFixed(2)}',
-                    style: TextStyle(color: Colors.grey[600]),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),
                 // Line total
@@ -886,13 +1495,25 @@ class _POSScreenState extends State<POSScreen> {
 }
 
 class _CartItem {
-  final ProductModel product;
+  final int productId;
+  final int lotId;
+  final String productName;
   double quantity;
-  double unitPrice;
+  final double unitPrice;
+  final String unit;
+  final int lotNumber;
+  final String? receivedDate;
+  final double availableStock;
 
   _CartItem({
-    required this.product,
+    required this.productId,
+    required this.lotId,
+    required this.productName,
     required this.quantity,
     required this.unitPrice,
+    required this.unit,
+    required this.lotNumber,
+    this.receivedDate,
+    required this.availableStock,
   });
 }

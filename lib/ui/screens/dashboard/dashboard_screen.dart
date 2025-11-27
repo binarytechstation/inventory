@@ -35,7 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _todaysPurchases;
   int _lowStockCount = 0;
   int _totalProducts = 0;
-  bool _isLoadingKPIs = false;
+  bool _isLoadingKPIs = true;  // Start with true to show loading on initial load
   String _currencySymbol = '৳';
 
   // Auto-refresh timer
@@ -89,10 +89,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
     _loadCurrencySymbol();
     // Set up auto-refresh every 30 seconds when on dashboard
     _startAutoRefresh();
+
+    // Defer data loading until after first frame to avoid blocking UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadDashboardData();
+      }
+    });
   }
 
   Future<void> _loadCurrencySymbol() async {
@@ -116,7 +122,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _startAutoRefresh() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    // Reduced frequency: refresh every 2 minutes instead of 30 seconds
+    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       if (_selectedIndex == 0 && mounted) {
         _loadDashboardData();
       }
@@ -124,7 +131,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
-    setState(() => _isLoadingKPIs = true);
+    // Only load if we're on the dashboard screen
+    if (_selectedIndex != 0 || !mounted) return;
+
+    if (mounted) setState(() => _isLoadingKPIs = true);
     try {
       final sales = await _transactionService.getTodaysSales();
       final purchases = await _transactionService.getTodaysPurchases();
@@ -135,18 +145,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         sortOrder: 'DESC',
       );
 
-      // Get sales data for the last 7 days for chart
-      final salesChartData = await _getLast7DaysSales();
+      // PERFORMANCE: Chart disabled, skip chart data loading
+      // final salesChartData = await _getLast7DaysSales();
 
-      setState(() {
-        _todaysSales = sales;
-        _todaysPurchases = purchases;
-        _lowStockCount = lowStock.length;
-        _totalProducts = productCount;
-        _recentTransactions = recentTransactions.take(5).toList();
-        _salesChartData = salesChartData;
-        _isLoadingKPIs = false;
-      });
+      if (mounted) {
+        setState(() {
+          _todaysSales = sales;
+          _todaysPurchases = purchases;
+          _lowStockCount = lowStock.length;
+          _totalProducts = productCount;
+          _recentTransactions = recentTransactions.take(5).toList();
+          // _salesChartData = salesChartData; // Chart disabled
+          _isLoadingKPIs = false;
+        });
+      }
     } catch (e) {
       setState(() => _isLoadingKPIs = false);
       if (mounted) {
@@ -161,23 +173,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final List<FlSpot> spots = [];
     final now = DateTime.now();
 
-    for (int i = 6; i >= 0; i--) {
-      final date = now.subtract(Duration(days: i));
-      final startOfDay = DateTime(date.year, date.month, date.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
+    // OPTIMIZED: Fetch all transactions from the last 7 days in ONE query
+    final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+    final endDate = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
 
-      final transactions = await _transactionService.getTransactions(
-        type: 'SELL',
-        startDate: startOfDay,
-        endDate: endOfDay,
-      );
+    final allTransactions = await _transactionService.getTransactions(
+      type: 'SELL',
+      startDate: startDate,
+      endDate: endDate,
+    );
 
-      double total = 0;
-      for (var transaction in transactions) {
-        total += (transaction['total_amount'] as num).toDouble();
+    // Group transactions by day
+    final Map<int, double> dailyTotals = {};
+    for (int i = 0; i <= 6; i++) {
+      dailyTotals[i] = 0;
+    }
+
+    for (var transaction in allTransactions) {
+      final transactionDate = DateTime.parse(transaction['created_at'] as String);
+      final daysDiff = now.difference(transactionDate).inDays;
+
+      if (daysDiff >= 0 && daysDiff <= 6) {
+        final index = 6 - daysDiff;
+        dailyTotals[index] = (dailyTotals[index] ?? 0) + (transaction['total_amount'] as num).toDouble();
       }
+    }
 
-      spots.add(FlSpot((6 - i).toDouble(), total));
+    // Convert to chart data points
+    for (int i = 0; i <= 6; i++) {
+      spots.add(FlSpot(i.toDouble(), dailyTotals[i] ?? 0));
     }
 
     return spots;
@@ -185,7 +209,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    // PERFORMANCE: Use listen: false to prevent rebuilding on every auth change
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.currentUser;
 
     return Scaffold(
@@ -198,9 +223,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 minHeight: MediaQuery.of(context).size.height,
               ),
               child: IntrinsicHeight(
-child: Builder(
+                child: Builder(
                   builder: (context) {
-                    final authProvider = Provider.of<AuthProvider>(context);
+                    // Use the authProvider from the parent context instead of creating a new one
                     final allowedIndices = _getAllowedMenuIndices(authProvider);
 
                     // Map selected index to allowed indices
@@ -210,9 +235,14 @@ child: Builder(
                     return NavigationRail(
                       selectedIndex: displayIndex,
                       onDestinationSelected: (displayIndex) {
+                        final newIndex = allowedIndices[displayIndex];
                         setState(() {
-                          _selectedIndex = allowedIndices[displayIndex];
+                          _selectedIndex = newIndex;
                         });
+                        // Reload dashboard data when switching to dashboard
+                        if (newIndex == 0) {
+                          _loadDashboardData();
+                        }
                       },
                       labelType: NavigationRailLabelType.all,
                       leading: Column(
@@ -290,6 +320,7 @@ child: Builder(
   }
 
   Widget _buildContent() {
+    // PERFORMANCE: Only build the selected screen, nothing else
     switch (_selectedIndex) {
       case 0:
         return _buildDashboardView();
@@ -492,74 +523,15 @@ child: Builder(
                             ),
                           ),
                           const SizedBox(height: 24),
-                          SizedBox(
+                          // PERFORMANCE: Chart disabled - fl_chart causes severe lag
+                          const SizedBox(
                             height: 200,
-                            child: _salesChartData.isEmpty
-                                ? const Center(child: Text('No sales data available'))
-                                : LineChart(
-                                    LineChartData(
-                                      gridData: FlGridData(
-                                        show: true,
-                                        drawVerticalLine: true,
-                                        horizontalInterval: 1,
-                                        verticalInterval: 1,
-                                      ),
-                                      titlesData: FlTitlesData(
-                                        leftTitles: AxisTitles(
-                                          sideTitles: SideTitles(
-                                            showTitles: true,
-                                            reservedSize: 40,
-                                            getTitlesWidget: (value, meta) {
-                                              return Text(
-                                                '$_currencySymbol${value.toInt()}',
-                                                style: const TextStyle(fontSize: 10),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        bottomTitles: AxisTitles(
-                                          sideTitles: SideTitles(
-                                            showTitles: true,
-                                            getTitlesWidget: (value, meta) {
-                                              final date = DateTime.now().subtract(Duration(days: 6 - value.toInt()));
-                                              return Padding(
-                                                padding: const EdgeInsets.only(top: 8.0),
-                                                child: Text(
-                                                  DateFormat('dd/MM').format(date),
-                                                  style: const TextStyle(fontSize: 10),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        rightTitles: const AxisTitles(
-                                          sideTitles: SideTitles(showTitles: false),
-                                        ),
-                                        topTitles: const AxisTitles(
-                                          sideTitles: SideTitles(showTitles: false),
-                                        ),
-                                      ),
-                                      borderData: FlBorderData(
-                                        show: true,
-                                        border: Border.all(color: Colors.grey[300]!),
-                                      ),
-                                      lineBarsData: [
-                                        LineChartBarData(
-                                          spots: _salesChartData,
-                                          isCurved: true,
-                                          color: Colors.green,
-                                          barWidth: 3,
-                                          isStrokeCapRound: true,
-                                          dotData: const FlDotData(show: true),
-                                          belowBarData: BarAreaData(
-                                            show: true,
-                                            color: Colors.green.withValues(alpha: 0.1),
-                                          ),
-                                        ),
-                                      ],
-                                      minY: 0,
-                                    ),
-                                  ),
+                            child: Center(
+                              child: Text(
+                                'Sales chart temporarily disabled for performance',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
                           ),
                         ],
                       ),

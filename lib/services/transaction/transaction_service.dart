@@ -84,9 +84,11 @@ class TransactionService {
           'quantity': item['quantity'],
           'unit': productUnit,
           'unit_price': item['unit_price'],
+          'total_price': item['subtotal'],
           'discount_amount': item['discount'] ?? 0,
           'tax_amount': item['tax'] ?? 0,
           'line_total': item['subtotal'],
+          'created_at': DateTime.now().toIso8601String(),
         });
 
         // Update inventory based on transaction type
@@ -469,27 +471,72 @@ class TransactionService {
 
       // 3. Create products and transaction lines
       for (final productData in products) {
-        // Get next product ID
-        final maxProductResult = await txn.rawQuery(
-          'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products'
-        );
-        final productId = maxProductResult.first['next_id'] as int;
+        int productId;
+        final productName = productData['product_name'] as String;
 
-        // Insert product
-        await txn.insert('products', {
-          'product_id': productId,
-          'lot_id': lotId,
-          'product_name': productData['product_name'],
-          'unit_price': productData['buying_price'],
-          'unit': productData['unit'],
-          'category': productData['category'] ?? '',
-          'sku': productData['sku'] ?? '',
-          'barcode': productData['barcode'] ?? '',
-          'product_description': productData['description'] ?? '',
-          'is_active': 1,
-          'created_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+        // Check if this product name already exists
+        final existingProducts = await txn.query(
+          'products',
+          where: 'product_name = ? AND is_active = 1',
+          whereArgs: [productName],
+          limit: 1,
+        );
+
+        if (existingProducts.isNotEmpty) {
+          // EXISTING PRODUCT: Update metadata and create new lot entry
+          productId = existingProducts.first['product_id'] as int;
+
+          // Update existing product's metadata (category, description, unit)
+          await txn.update(
+            'products',
+            {
+              'category': productData['category'] ?? existingProducts.first['category'],
+              'product_description': productData['description'] ?? existingProducts.first['product_description'],
+              'unit': productData['unit'] ?? existingProducts.first['unit'],
+              'updated_at': DateTime.now().toIso8601String(),
+            },
+            where: 'product_name = ? AND is_active = 1',
+            whereArgs: [productName],
+          );
+
+          // Create new lot entry for this existing product
+          await txn.insert('products', {
+            'product_id': productId,
+            'lot_id': lotId,
+            'product_name': productName,
+            'unit_price': productData['buying_price'],
+            'unit': productData['unit'] ?? existingProducts.first['unit'],
+            'category': productData['category'] ?? existingProducts.first['category'],
+            'sku': productData['sku'] ?? existingProducts.first['sku'],
+            'barcode': productData['barcode'] ?? existingProducts.first['barcode'],
+            'product_description': productData['description'] ?? existingProducts.first['product_description'],
+            'is_active': 1,
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        } else {
+          // NEW PRODUCT: Generate new product_id and create entry
+          final maxProductResult = await txn.rawQuery(
+            'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products'
+          );
+          productId = maxProductResult.first['next_id'] as int;
+
+          // Insert new product
+          await txn.insert('products', {
+            'product_id': productId,
+            'lot_id': lotId,
+            'product_name': productName,
+            'unit_price': productData['buying_price'],
+            'unit': productData['unit'],
+            'category': productData['category'] ?? '',
+            'sku': productData['sku'] ?? '',
+            'barcode': productData['barcode'] ?? '',
+            'product_description': productData['description'] ?? '',
+            'is_active': 1,
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        }
 
         // Insert stock record
         await txn.insert('stock', {
@@ -504,6 +551,7 @@ class TransactionService {
         });
 
         // Insert transaction line
+        final lineTotal = (productData['quantity'] as double) * (productData['buying_price'] as double);
         await txn.insert('transaction_lines', {
           'transaction_id': transactionId,
           'product_id': productId,
@@ -512,9 +560,11 @@ class TransactionService {
           'quantity': productData['quantity'],
           'unit': productData['unit'],
           'unit_price': productData['buying_price'],
+          'total_price': lineTotal,
           'discount_amount': 0,
           'tax_amount': 0,
-          'line_total': (productData['quantity'] as double) * (productData['buying_price'] as double),
+          'line_total': lineTotal,
+          'created_at': DateTime.now().toIso8601String(),
         });
       }
 
