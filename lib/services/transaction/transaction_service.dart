@@ -530,6 +530,7 @@ class TransactionService {
             'lot_id': lotId,
             'product_name': productName,
             'unit_price': productData['buying_price'],
+            'selling_price': productData['selling_price'],
             'unit': productData['unit'],
             'category': productData['category'] ?? '',
             'sku': productData['sku'] ?? '',

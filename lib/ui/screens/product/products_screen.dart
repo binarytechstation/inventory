@@ -168,8 +168,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
         builder: (context) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Container(
-            width: 650,
-            constraints: const BoxConstraints(maxHeight: 700),
+            width: 700,
+            constraints: const BoxConstraints(maxHeight: 750),
             child: Column(
               children: [
                 // Header
@@ -249,9 +249,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             final lotDescription = lot['lot_description'] as String?;
                             final receivedDate = lot['received_date'] as String?;
                             final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
-                            final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
+                            final buyingPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0; // This is the buying/purchase price
+                            final sellingPrice = (lot['selling_price'] as num?)?.toDouble() ?? 0.0; // Get selling price from each lot
                             final unit = lot['unit'] as String? ?? 'piece';
-                            final serialNumber = index + 1; // Serial lot number starting from 1
+                            final serialNumber = index + 1;
+
+                            // Calculate profit margin
+                            final profitPerUnit = sellingPrice - buyingPrice;
+                            final profitMargin = buyingPrice > 0 ? ((profitPerUnit / buyingPrice) * 100) : 0.0;
 
                             // Format date
                             String formattedDate = '';
@@ -265,7 +270,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 16),
-                              elevation: 2,
+                              elevation: 3,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -274,6 +279,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // Header with Lot number and description
                                     Row(
                                       children: [
                                         Container(
@@ -304,7 +310,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 12),
-                                        // Always show lot name/description (N/A if empty)
                                         Flexible(
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(
@@ -356,7 +361,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         ),
                                       ],
                                     ),
-                                    // Always show date
+                                    // Date received
                                     if (formattedDate.isNotEmpty) ...[
                                       const SizedBox(height: 8),
                                       Row(
@@ -376,7 +381,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                                 Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade600),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  formattedDate,
+                                                  'Received: $formattedDate',
                                                   style: TextStyle(
                                                     color: Colors.grey.shade700,
                                                     fontSize: 13,
@@ -388,33 +393,110 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         ],
                                       ),
                                     ],
-                                    const Divider(height: 28),
+                                    const Divider(height: 24),
+                                    // Stock and prices section
                                     Row(
                                       children: [
                                         Expanded(
                                           child: _buildLotDetailRow(
-                                            'Stock',
+                                            'Current Stock',
                                             '${stock.toStringAsFixed(2)} $unit',
                                             Icons.inventory_2,
                                             stock > 10 ? Colors.green : Colors.orange,
                                           ),
                                         ),
+                                        const SizedBox(width: 8),
                                         Expanded(
                                           child: _buildLotDetailRow(
-                                            'Unit Price',
-                                            '$_currencySymbol${unitPrice.toStringAsFixed(2)}',
-                                            Icons.attach_money,
-                                            Colors.blue,
+                                            'Lot Value',
+                                            '$_currencySymbol${(stock * buyingPrice).toStringAsFixed(2)}',
+                                            Icons.calculate,
+                                            Colors.purple,
                                           ),
                                         ),
                                       ],
                                     ),
                                     const SizedBox(height: 12),
-                                    _buildLotDetailRow(
-                                      'Total Value',
-                                      '$_currencySymbol${(stock * unitPrice).toStringAsFixed(2)}',
-                                      Icons.calculate,
-                                      Colors.purple,
+                                    // Buying and Selling Prices
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildLotDetailRow(
+                                            'Buying Price',
+                                            '$_currencySymbol${buyingPrice.toStringAsFixed(2)}/$unit',
+                                            Icons.shopping_cart,
+                                            Colors.red,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _buildLotDetailRow(
+                                            'Selling Price',
+                                            '$_currencySymbol${sellingPrice.toStringAsFixed(2)}/$unit',
+                                            Icons.sell,
+                                            Colors.green,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Profit margin
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: profitPerUnit >= 0
+                                              ? [Colors.green.shade50, Colors.green.shade100]
+                                              : [Colors.red.shade50, Colors.red.shade100],
+                                        ),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: profitPerUnit >= 0 ? Colors.green.shade300 : Colors.red.shade300,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                profitPerUnit >= 0 ? Icons.trending_up : Icons.trending_down,
+                                                size: 18,
+                                                color: profitPerUnit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Profit per Unit:',
+                                                style: TextStyle(
+                                                  color: profitPerUnit >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                '$_currencySymbol${profitPerUnit.toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  color: profitPerUnit >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${profitMargin.toStringAsFixed(1)}% margin',
+                                                style: TextStyle(
+                                                  color: profitPerUnit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -859,6 +941,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final lotId = lot['lot_id'] as int;
     final productId = lot['product_id'] as int;
     final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
+    final sellingPrice = (lot['selling_price'] as num?)?.toDouble() ?? 0.0;
     final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
     final receivedDate = lot['received_date'] as String?;
     final notes = lot['lot_description'] as String? ?? '';
@@ -866,6 +949,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final productName = lot['product_name'] as String? ?? '';
 
     final lotNameController = TextEditingController(text: productName);
+    final sellingPriceController = TextEditingController(text: sellingPrice.toStringAsFixed(2));
     final notesController = TextEditingController(text: notes);
 
     // Format date
@@ -998,15 +1082,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Read-only fields in a grid
+            // Read-only and editable fields in a grid
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: TextEditingController(text: unitPrice.toStringAsFixed(2)),
                     decoration: InputDecoration(
-                      labelText: 'Unit Price ($_currencySymbol)',
-                      prefixIcon: const Icon(Icons.attach_money),
+                      labelText: 'Buying Price ($_currencySymbol)',
+                      prefixIcon: const Icon(Icons.shopping_cart),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1017,6 +1101,25 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: sellingPriceController,
+                    decoration: InputDecoration(
+                      labelText: 'Selling Price ($_currencySymbol)',
+                      prefixIcon: const Icon(Icons.sell),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
                 Expanded(
                   child: TextField(
                     controller: TextEditingController(text: stock.toStringAsFixed(2)),
@@ -1032,26 +1135,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     enabled: false,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            TextField(
-              controller: TextEditingController(
-                text: receivedDate != null
-                    ? DateTime.tryParse(receivedDate)?.toLocal().toString().split(' ')[0] ?? receivedDate
-                    : '',
-              ),
-              decoration: InputDecoration(
-                labelText: 'Received Date',
-                prefixIcon: const Icon(Icons.calendar_today),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(
+                      text: receivedDate != null
+                          ? DateTime.tryParse(receivedDate)?.toLocal().toString().split(' ')[0] ?? receivedDate
+                          : '',
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Received Date',
+                      prefixIcon: const Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                    ),
+                    enabled: false,
+                  ),
                 ),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-              ),
-              enabled: false,
+              ],
             ),
             const SizedBox(height: 12),
 
@@ -1083,7 +1187,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Only Lot Name and Description can be changed here. Price, stock, and date are read-only.',
+                      'You can edit: Lot Name, Selling Price, and Description. Buying price, stock, and date are read-only.',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue.shade900,
@@ -1101,11 +1205,26 @@ class _ProductsScreenState extends State<ProductsScreen> {
               child: ElevatedButton.icon(
                 onPressed: () async {
                   try {
+                    // Parse and validate selling price
+                    final newSellingPrice = double.tryParse(sellingPriceController.text.trim());
+                    if (newSellingPrice == null || newSellingPrice < 0) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter a valid selling price'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
                     await _productService.updateLotData(
                       productId: productId,
                       lotId: lotId,
                       lotName: lotNameController.text.trim().isEmpty ? null : lotNameController.text.trim(),
                       notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                      sellingPrice: newSellingPrice,
                     );
 
                     if (mounted) {
@@ -1565,51 +1684,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
         title: const Text('Products'),
         elevation: 2,
         actions: [
-          // View toggle buttons
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                _buildViewToggleButton(
-                  'View by Product',
-                  Icons.view_list,
-                  'product',
-                ),
-                _buildViewToggleButton(
-                  'View by Category',
-                  Icons.category,
-                  'category',
-                ),
-              ],
-            ),
-          ),
-
-          IconButton(
-            icon: Icon(
-              _selectedCategory != null ? Icons.filter_alt : Icons.filter_alt_outlined,
-              color: _selectedCategory != null ? Colors.blue : null,
-            ),
-            onPressed: _showCategoryFilter,
-            tooltip: 'Filter by Category',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.sort),
-            onSelected: (value) {
-              setState(() => _sortBy = value);
-              _loadProducts();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'name', child: Text('Sort by Name')),
-              const PopupMenuItem(value: 'sku', child: Text('Sort by SKU')),
-              const PopupMenuItem(value: 'category', child: Text('Sort by Category')),
-              const PopupMenuItem(value: 'selling_price', child: Text('Sort by Price')),
-              const PopupMenuItem(value: 'created_at', child: Text('Sort by Date Added')),
-            ],
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadProducts,
@@ -1619,29 +1693,166 @@ class _ProductsScreenState extends State<ProductsScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search products by name, SKU, or barcode...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _filterProducts('');
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+          // Enhanced toolbar with view toggle and filters
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  spreadRadius: 1,
+                  blurRadius: 3,
+                  offset: const Offset(0, 2),
                 ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-              ),
-              onChanged: _filterProducts,
+              ],
+            ),
+            child: Column(
+              children: [
+                // Search bar with filters
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search products by name, SKU, or barcode...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _filterProducts('');
+                                  },
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        onChanged: _filterProducts,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Filter button
+                    Tooltip(
+                      message: 'Filter by Category',
+                      child: OutlinedButton.icon(
+                        onPressed: _showCategoryFilter,
+                        icon: Icon(
+                          _selectedCategory != null ? Icons.filter_alt : Icons.filter_alt_outlined,
+                          color: _selectedCategory != null ? Colors.blue : Colors.grey[700],
+                        ),
+                        label: Text(
+                          _selectedCategory != null ? 'Filtered' : 'Filter',
+                          style: TextStyle(
+                            color: _selectedCategory != null ? Colors.blue : Colors.grey[700],
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: BorderSide(
+                            color: _selectedCategory != null ? Colors.blue : Colors.grey[300]!,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Sort button
+                    Tooltip(
+                      message: 'Sort',
+                      child: PopupMenuButton<String>(
+                        icon: Icon(Icons.sort, color: Colors.grey[700]),
+                        onSelected: (value) {
+                          setState(() => _sortBy = value);
+                          _loadProducts();
+                        },
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'name',
+                            child: Row(
+                              children: [
+                                Icon(Icons.sort_by_alpha, size: 20),
+                                SizedBox(width: 12),
+                                Text('Sort by Name'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'sku',
+                            child: Row(
+                              children: [
+                                Icon(Icons.qr_code, size: 20),
+                                SizedBox(width: 12),
+                                Text('Sort by SKU'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'category',
+                            child: Row(
+                              children: [
+                                Icon(Icons.category, size: 20),
+                                SizedBox(width: 12),
+                                Text('Sort by Category'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'selling_price',
+                            child: Row(
+                              children: [
+                                Icon(Icons.attach_money, size: 20),
+                                SizedBox(width: 12),
+                                Text('Sort by Price'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'created_at',
+                            child: Row(
+                              children: [
+                                Icon(Icons.date_range, size: 20),
+                                SizedBox(width: 12),
+                                Text('Sort by Date Added'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // View toggle buttons - More prominent
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildEnhancedViewToggleButton(
+                        'View by Product',
+                        Icons.view_list,
+                        'product',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildEnhancedViewToggleButton(
+                        'View by Category',
+                        Icons.category,
+                        'category',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           if (_selectedCategory != null)
@@ -1688,6 +1899,62 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedViewToggleButton(String label, IconData icon, String mode) {
+    final isActive = _viewMode == mode;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _viewMode = mode;
+          });
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive ? Theme.of(context).primaryColor : Colors.grey[100],
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive ? Theme.of(context).primaryColor : Colors.grey[300]!,
+              width: 1.5,
+            ),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: isActive ? Colors.white : Colors.grey[700],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isActive ? Colors.white : Colors.grey[700],
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

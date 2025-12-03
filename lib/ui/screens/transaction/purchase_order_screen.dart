@@ -917,8 +917,15 @@ class _AddProductDialogState extends State<_AddProductDialog> {
           _categoryController.text = productDetails['category'] ?? '';
           _descriptionController.text = productDetails['product_description'] ?? '';
           _unit = productDetails['unit'] ?? 'piece';
-          // Note: SKU, barcode, prices are NOT auto-filled for existing products
-          // because each lot can have different prices
+
+          // Auto-fill selling price from product (can be edited)
+          final sellingPrice = productDetails['selling_price'];
+          if (sellingPrice != null) {
+            _sellingPriceController.text = sellingPrice.toString();
+          }
+
+          // Note: SKU, barcode, and buying price are NOT auto-filled
+          // because each lot can have different values
         });
       }
     } catch (e) {
