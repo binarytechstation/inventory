@@ -438,7 +438,7 @@ class TransactionService {
       await txn.insert('lots', {
         'lot_id': lotId,
         'received_date': lotData['received_date'] ?? date.toIso8601String(),
-        'description': lotData['description'] ?? lotData['lot_name'] ?? 'Lot #$lotId',
+        'description': lotData['lot_name'] ?? 'Lot #$lotId', // Use lot_name (generated name with date+time)
         'is_active': 1,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
@@ -500,11 +500,14 @@ class TransactionService {
           );
 
           // Create new lot entry for this existing product
+          // IMPORTANT: Copy image and selling_price from existing product
           await txn.insert('products', {
             'product_id': productId,
             'lot_id': lotId,
             'product_name': productName,
             'unit_price': productData['buying_price'],
+            'selling_price': productData['selling_price'] ?? existingProducts.first['selling_price'],
+            'product_image': existingProducts.first['product_image'], // Copy image from existing product
             'unit': productData['unit'] ?? existingProducts.first['unit'],
             'category': productData['category'] ?? existingProducts.first['category'],
             'sku': productData['sku'] ?? existingProducts.first['sku'],

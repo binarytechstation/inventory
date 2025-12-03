@@ -62,11 +62,15 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
   }
 
   void _updateLotName() {
-    final dateStr = _transactionDate.toString().split(' ')[0];
+    final now = _transactionDate;
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    final dateTimeStr = '$dateStr $timeStr';
+
     setState(() {
-      _lotName = _lotNumberController.text.isEmpty
-          ? 'LOT-$dateStr'
-          : 'LOT${_lotNumberController.text}-$dateStr';
+      _lotName = _lotNumberController.text.trim().isEmpty
+          ? 'LOT-$dateTimeStr'
+          : '${_lotNumberController.text.trim()} ($dateTimeStr)';
     });
   }
 
@@ -99,44 +103,318 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     final suppliers = await _supplierService.getAllSuppliers();
     if (!mounted) return;
 
+    final searchController = TextEditingController();
+    List<SupplierModel> filteredSuppliers = List.from(suppliers);
+
     final selected = await showDialog<SupplierModel>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Supplier'),
-        content: SizedBox(
-          width: 400,
-          height: 400,
-          child: suppliers.isEmpty
-              ? const Center(child: Text('No suppliers available'))
-              : ListView.builder(
-                  itemCount: suppliers.length,
-                  itemBuilder: (context, index) {
-                    final supplier = suppliers[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(supplier.name.substring(0, 1).toUpperCase()),
-                      ),
-                      title: Text(supplier.name),
-                      subtitle: supplier.companyName != null
-                          ? Text(supplier.companyName!)
-                          : null,
-                      onTap: () => Navigator.pop(context, supplier),
-                    );
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Select Supplier'),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  // Capture context before async operation
+                  final dialogContext = context;
+                  // Show add supplier dialog
+                  final newSupplier = await _showAddSupplierDialog();
+                  if (newSupplier != null) {
+                    // Refresh suppliers list
+                    final updatedSuppliers = await _supplierService.getAllSuppliers();
+                    setDialogState(() {
+                      suppliers.clear();
+                      suppliers.addAll(updatedSuppliers);
+                      filteredSuppliers = List.from(suppliers);
+                    });
+                    // Auto-select the new supplier
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext, newSupplier);
+                    }
+                  }
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            height: 450,
+            child: Column(
+              children: [
+                // Search bar
+                TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Search by name',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (query) {
+                    setDialogState(() {
+                      filteredSuppliers = suppliers.where((supplier) {
+                        final nameLower = supplier.name.toLowerCase();
+                        final companyLower = (supplier.companyName ?? '').toLowerCase();
+                        final searchLower = query.toLowerCase();
+                        return nameLower.contains(searchLower) || companyLower.contains(searchLower);
+                      }).toList();
+                    });
                   },
                 ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+                const SizedBox(height: 16),
+                // Suppliers list
+                Expanded(
+                  child: filteredSuppliers.isEmpty
+                      ? Center(
+                          child: Text(
+                            searchController.text.isEmpty
+                                ? 'No suppliers available'
+                                : 'No suppliers found',
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filteredSuppliers.length,
+                          itemBuilder: (context, index) {
+                            final supplier = filteredSuppliers[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                child: Text(supplier.name.substring(0, 1).toUpperCase()),
+                              ),
+                              title: Text(supplier.name),
+                              subtitle: supplier.companyName != null
+                                  ? Text(supplier.companyName!)
+                                  : null,
+                              onTap: () {
+                                searchController.dispose();
+                                Navigator.pop(context, supplier);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () {
+                searchController.dispose();
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
       ),
     );
 
     if (selected != null) {
       setState(() => _selectedSupplier = selected);
     }
+  }
+
+  Future<SupplierModel?> _showAddSupplierDialog() async {
+    final nameController = TextEditingController();
+    final companyController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final addressController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.business, color: Colors.green.shade700),
+            ),
+            const SizedBox(width: 12),
+            const Text('Add New Supplier'),
+          ],
+        ),
+        content: SizedBox(
+          width: 450,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Supplier Name *',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: companyController,
+                  decoration: InputDecoration(
+                    labelText: 'Company Name (Optional)',
+                    prefixIcon: const Icon(Icons.business),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: phoneController,
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number *',
+                    prefixIcon: const Icon(Icons.phone),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email (Optional)',
+                    prefixIcon: const Icon(Icons.email),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: addressController,
+                  decoration: InputDecoration(
+                    labelText: 'Address (Optional)',
+                    prefixIcon: const Icon(Icons.location_on),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              nameController.dispose();
+              companyController.dispose();
+              phoneController.dispose();
+              emailController.dispose();
+              addressController.dispose();
+              Navigator.pop(context, false);
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.save),
+            label: const Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      final name = nameController.text.trim();
+      final phone = phoneController.text.trim();
+
+      if (name.isEmpty || phone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Name and phone are required')),
+        );
+        nameController.dispose();
+        companyController.dispose();
+        phoneController.dispose();
+        emailController.dispose();
+        addressController.dispose();
+        return null;
+      }
+
+      try {
+        // Create supplier model
+        final supplier = SupplierModel(
+          name: name,
+          companyName: companyController.text.trim().isEmpty ? null : companyController.text.trim(),
+          phone: phone,
+          email: emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+          address: addressController.text.trim().isEmpty ? null : addressController.text.trim(),
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+        // Save supplier
+        final supplierId = await _supplierService.createSupplier(supplier);
+
+        // Get the created supplier with ID
+        final suppliers = await _supplierService.getAllSuppliers();
+        final newSupplier = suppliers.firstWhere(
+          (s) => s.id == supplierId,
+          orElse: () => suppliers.first,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Supplier "$name" added successfully')),
+          );
+        }
+
+        nameController.dispose();
+        companyController.dispose();
+        phoneController.dispose();
+        emailController.dispose();
+        addressController.dispose();
+
+        return newSupplier;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error adding supplier: $e')),
+          );
+        }
+        nameController.dispose();
+        companyController.dispose();
+        phoneController.dispose();
+        emailController.dispose();
+        addressController.dispose();
+        return null;
+      }
+    }
+
+    nameController.dispose();
+    companyController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    addressController.dispose();
+    return null;
   }
 
   Future<void> _addProduct() async {
@@ -188,13 +466,6 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
       return;
     }
 
-    if (_lotNumberController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a lot number')),
-      );
-      return;
-    }
-
     if (_products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add at least one product')),
@@ -209,9 +480,8 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
       // that creates the lot and products together
       final lotData = {
         'lot_number': _lotNumberController.text.trim(),
-        'lot_name': _lotName,
+        'lot_name': _lotName, // This is the generated lot name with date and time
         'received_date': _transactionDate.toIso8601String(),
-        'description': 'Purchase from ${_selectedSupplier!.name}',
       };
 
       // Format products for transaction service
@@ -375,13 +645,13 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                           TextFormField(
                             controller: _lotNumberController,
                             decoration: const InputDecoration(
-                              labelText: 'Lot Number *',
+                              labelText: 'Lot Name *',
                               border: OutlineInputBorder(),
-                              hintText: 'e.g., 001, A1, 2025-01',
+                              hintText: 'e.g., Summer Stock, Batch A',
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Please enter a lot number';
+                                return 'Lot name is required';
                               }
                               return null;
                             },
@@ -399,11 +669,13 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                               children: [
                                 Icon(Icons.label, color: Colors.blue.shade700, size: 20),
                                 const SizedBox(width: 8),
-                                Text(
-                                  'Lot Name: $_lotName',
-                                  style: TextStyle(
-                                    color: Colors.blue.shade900,
-                                    fontWeight: FontWeight.w600,
+                                Expanded(
+                                  child: Text(
+                                    'Generated Lot: $_lotName',
+                                    style: TextStyle(
+                                      color: Colors.blue.shade900,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],

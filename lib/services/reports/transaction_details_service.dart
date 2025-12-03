@@ -41,12 +41,15 @@ class TransactionDetailsService {
     for (final transaction in transactions) {
       final enriched = Map<String, dynamic>.from(transaction);
 
-      // Get transaction lines
-      final lines = await db.query(
-        'transaction_lines',
-        where: 'transaction_id = ?',
-        whereArgs: [transaction['id']],
-      );
+      // Get transaction lines with lot details
+      final lines = await db.rawQuery('''
+        SELECT
+          tl.*,
+          l.description as lot_description
+        FROM transaction_lines tl
+        LEFT JOIN lots l ON tl.lot_id = l.lot_id
+        WHERE tl.transaction_id = ?
+      ''', [transaction['id']]);
       enriched['lines'] = lines;
 
       // Get user name who created the transaction
@@ -113,12 +116,15 @@ class TransactionDetailsService {
     for (final transaction in transactions) {
       final enriched = Map<String, dynamic>.from(transaction);
 
-      // Get transaction lines
-      final lines = await db.query(
-        'transaction_lines',
-        where: 'transaction_id = ?',
-        whereArgs: [transaction['id']],
-      );
+      // Get transaction lines with lot details
+      final lines = await db.rawQuery('''
+        SELECT
+          tl.*,
+          l.description as lot_description
+        FROM transaction_lines tl
+        LEFT JOIN lots l ON tl.lot_id = l.lot_id
+        WHERE tl.transaction_id = ?
+      ''', [transaction['id']]);
       enriched['lines'] = lines;
 
       // Get user name who created the transaction

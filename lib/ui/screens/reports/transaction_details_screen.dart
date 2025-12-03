@@ -289,8 +289,9 @@ class _DateRangeReportState extends State<_DateRangeReport> {
                             DataColumn(label: Text('Party')),
                             DataColumn(label: Text('Products')),
                             DataColumn(label: Text('Quantity')),
+                            DataColumn(label: Text('Lot Details')),
                             DataColumn(label: Text('Discount')),
-                            DataColumn(label: Text('User')),
+                            DataColumn(label: Text('Unit Price')),
                             DataColumn(label: Text('Total')),
                           ],
                           rows: _transactions.map((t) {
@@ -302,8 +303,9 @@ class _DateRangeReportState extends State<_DateRangeReport> {
                               DataCell(Text(t['party_name'] as String? ?? 'N/A')),
                               DataCell(Text(_getProductNames(t['lines'] as List))),
                               DataCell(Text(_getTotalQuantity(t['lines'] as List))),
+                              DataCell(Text(_getLotDetails(t['lines'] as List))),
                               DataCell(Text('${widget.currencySymbol}${(t['discount_amount'] as num).toStringAsFixed(2)}')),
-                              DataCell(Text(t['user_name'] as String)),
+                              DataCell(Text(_getAverageUnitPrice(t['lines'] as List))),
                               DataCell(Text(
                                 '${widget.currencySymbol}${(t['total_amount'] as num).toStringAsFixed(2)}',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
@@ -330,6 +332,28 @@ class _DateRangeReportState extends State<_DateRangeReport> {
       (sum, l) => sum + (l['quantity'] as num).toDouble(),
     );
     return total.toStringAsFixed(2);
+  }
+
+  String _getAverageUnitPrice(List lines) {
+    if (lines.isEmpty) return 'N/A';
+    final total = lines.fold<double>(
+      0,
+      (sum, l) => sum + (l['unit_price'] as num).toDouble(),
+    );
+    final average = total / lines.length;
+    return '${widget.currencySymbol}${average.toStringAsFixed(2)}';
+  }
+
+  String _getLotDetails(List lines) {
+    if (lines.isEmpty) return 'N/A';
+    final lotNames = lines
+        .map((l) {
+          final lotDesc = l['lot_description'] as String?;
+          return (lotDesc != null && lotDesc.isNotEmpty) ? lotDesc : 'Lot #${l['lot_id']}';
+        })
+        .take(2)
+        .join(', ');
+    return lines.length > 2 ? '$lotNames +${lines.length - 2}' : lotNames;
   }
 }
 
@@ -624,8 +648,9 @@ class _HourlyReportState extends State<_HourlyReport> {
                             DataColumn(label: Text('Party')),
                             DataColumn(label: Text('Products')),
                             DataColumn(label: Text('Quantity')),
+                            DataColumn(label: Text('Lot Details')),
                             DataColumn(label: Text('Discount')),
-                            DataColumn(label: Text('User')),
+                            DataColumn(label: Text('Unit Price')),
                             DataColumn(label: Text('Total')),
                           ],
                           rows: _transactions.map((t) {
@@ -637,8 +662,9 @@ class _HourlyReportState extends State<_HourlyReport> {
                               DataCell(Text(t['party_name'] as String? ?? 'N/A')),
                               DataCell(Text(_getProductNames(t['lines'] as List))),
                               DataCell(Text(_getTotalQuantity(t['lines'] as List))),
+                              DataCell(Text(_getLotDetails(t['lines'] as List))),
                               DataCell(Text('${widget.currencySymbol}${(t['discount_amount'] as num).toStringAsFixed(2)}')),
-                              DataCell(Text(t['user_name'] as String)),
+                              DataCell(Text(_getAverageUnitPrice(t['lines'] as List))),
                               DataCell(Text(
                                 '${widget.currencySymbol}${(t['total_amount'] as num).toStringAsFixed(2)}',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
@@ -671,6 +697,28 @@ class _HourlyReportState extends State<_HourlyReport> {
       (sum, l) => sum + (l['quantity'] as num).toDouble(),
     );
     return total.toStringAsFixed(2);
+  }
+
+  String _getAverageUnitPrice(List lines) {
+    if (lines.isEmpty) return 'N/A';
+    final total = lines.fold<double>(
+      0,
+      (sum, l) => sum + (l['unit_price'] as num).toDouble(),
+    );
+    final average = total / lines.length;
+    return '${widget.currencySymbol}${average.toStringAsFixed(2)}';
+  }
+
+  String _getLotDetails(List lines) {
+    if (lines.isEmpty) return 'N/A';
+    final lotNames = lines
+        .map((l) {
+          final lotDesc = l['lot_description'] as String?;
+          return (lotDesc != null && lotDesc.isNotEmpty) ? lotDesc : 'Lot #${l['lot_id']}';
+        })
+        .take(2)
+        .join(', ');
+    return lines.length > 2 ? '$lotNames +${lines.length - 2}' : lotNames;
   }
 }
 

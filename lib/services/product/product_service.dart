@@ -345,6 +345,24 @@ class ProductService {
     await db.transaction((txn) async {
       final now = DateTime.now().toIso8601String();
 
+      // Check if there's an existing product with the same name and copy its details
+      final existingProducts = await txn.query(
+        'products',
+        where: 'product_name = ? AND is_active = 1',
+        whereArgs: [productName],
+        limit: 1,
+      );
+
+      // If product exists, inherit image, category, and description
+      if (existingProducts.isNotEmpty) {
+        final existing = existingProducts.first;
+        productImage ??= existing['product_image'] as String?;
+        productDescription ??= existing['product_description'] as String?;
+        category ??= existing['category'] as String?;
+        sku ??= existing['sku'] as String?;
+        barcode ??= existing['barcode'] as String?;
+      }
+
       // 1. Create product in lot
       await txn.insert('products', {
         'product_id': productId,

@@ -246,11 +246,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           itemCount: lots.length,
                           itemBuilder: (context, index) {
                             final lot = lots[index];
-                            final lotId = lot['lot_id'] as int? ?? 0;
+                            final lotDescription = lot['lot_description'] as String?;
                             final receivedDate = lot['received_date'] as String?;
                             final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
                             final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
                             final unit = lot['unit'] as String? ?? 'piece';
+                            final serialNumber = index + 1; // Serial lot number starting from 1
+
+                            // Format date
+                            String formattedDate = '';
+                            if (receivedDate != null) {
+                              formattedDate = DateTime.tryParse(receivedDate)
+                                      ?.toLocal()
+                                      .toString()
+                                      .split(' ')[0] ??
+                                  receivedDate;
+                            }
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 16),
@@ -282,7 +293,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                               Icon(Icons.inventory_2, size: 16, color: Colors.blue.shade700),
                                               const SizedBox(width: 6),
                                               Text(
-                                                'Lot #$lotId',
+                                                'Lot #$serialNumber',
                                                 style: TextStyle(
                                                   color: Colors.blue.shade900,
                                                   fontWeight: FontWeight.bold,
@@ -293,7 +304,63 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 12),
-                                        if (receivedDate != null)
+                                        // Always show lot name/description (N/A if empty)
+                                        Flexible(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: (lotDescription != null && lotDescription.isNotEmpty)
+                                                  ? Colors.green.shade50
+                                                  : Colors.grey.shade50,
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: (lotDescription != null && lotDescription.isNotEmpty)
+                                                    ? Colors.green.shade200
+                                                    : Colors.grey.shade300,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.label,
+                                                  size: 14,
+                                                  color: (lotDescription != null && lotDescription.isNotEmpty)
+                                                      ? Colors.green.shade700
+                                                      : Colors.grey.shade600,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    (lotDescription != null && lotDescription.isNotEmpty)
+                                                        ? lotDescription
+                                                        : 'N/A',
+                                                    style: TextStyle(
+                                                      color: (lotDescription != null && lotDescription.isNotEmpty)
+                                                          ? Colors.green.shade900
+                                                          : Colors.grey.shade600,
+                                                      fontSize: 13,
+                                                      fontWeight: (lotDescription != null && lotDescription.isNotEmpty)
+                                                          ? FontWeight.w600
+                                                          : FontWeight.normal,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // Always show date
+                                    if (formattedDate.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 12,
@@ -304,15 +371,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                               borderRadius: BorderRadius.circular(12),
                                             ),
                                             child: Row(
+                                              mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade600),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  DateTime.tryParse(receivedDate)
-                                                          ?.toLocal()
-                                                          .toString()
-                                                          .split(' ')[0] ??
-                                                      receivedDate,
+                                                  formattedDate,
                                                   style: TextStyle(
                                                     color: Colors.grey.shade700,
                                                     fontSize: 13,
@@ -321,8 +385,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                               ],
                                             ),
                                           ),
-                                      ],
-                                    ),
+                                        ],
+                                      ),
+                                    ],
                                     const Divider(height: 28),
                                     Row(
                                       children: [
@@ -772,7 +837,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     itemCount: lots.length,
                     itemBuilder: (context, index) {
                       final lot = lots[index];
-                      return _buildEditableLotCard(lot);
+                      return _buildEditableLotCard(lot, index + 1);
                     },
                   ),
                 ),
@@ -790,7 +855,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  Widget _buildEditableLotCard(Map<String, dynamic> lot) {
+  Widget _buildEditableLotCard(Map<String, dynamic> lot, int serialNumber) {
     final lotId = lot['lot_id'] as int;
     final productId = lot['product_id'] as int;
     final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
@@ -803,6 +868,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final lotNameController = TextEditingController(text: productName);
     final notesController = TextEditingController(text: notes);
 
+    // Format date
+    String formattedDate = '';
+    if (receivedDate != null) {
+      formattedDate = DateTime.tryParse(receivedDate)
+              ?.toLocal()
+              .toString()
+              .split(' ')[0] ??
+          receivedDate;
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 3,
@@ -814,7 +889,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Lot header
+            // Lot header with serial number
             Row(
               children: [
                 Container(
@@ -831,7 +906,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       Icon(Icons.inventory_2, size: 16, color: Colors.orange.shade700),
                       const SizedBox(width: 6),
                       Text(
-                        'Lot #$lotId',
+                        'Lot #$serialNumber',
                         style: TextStyle(
                           color: Colors.orange.shade900,
                           fontWeight: FontWeight.bold,
@@ -841,8 +916,73 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                // Always show lot name (N/A if empty)
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: notes.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: notes.isNotEmpty ? Colors.green.shade200 : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.label,
+                          size: 14,
+                          color: notes.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            notes.isNotEmpty ? notes : 'N/A',
+                            style: TextStyle(
+                              color: notes.isNotEmpty ? Colors.green.shade900 : Colors.grey.shade600,
+                              fontSize: 13,
+                              fontWeight: notes.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
+            // Show date
+            if (formattedDate.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade600),
+                        const SizedBox(width: 6),
+                        Text(
+                          formattedDate,
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Lot Name (editable)

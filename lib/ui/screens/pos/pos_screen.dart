@@ -250,6 +250,7 @@ class _POSScreenState extends State<POSScreen> {
                         unitPrice * 1.2);
                     final unit = (lot['unit'] as String?) ?? 'piece';
                     final receivedDate = lot['received_date'] as String?;
+                    final lotDescription = lot['lot_description'] as String?; // Generated lot name
                     final isSelected = selectedLots[lotId] ?? false;
 
                     // Format received date
@@ -300,37 +301,75 @@ class _POSScreenState extends State<POSScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
+                                      // Show generated lot name prominently
+                                      if (lotDescription != null && lotDescription.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [Colors.green.shade100, Colors.green.shade50],
                                             ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.shade100,
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                            child: Text(
-                                              'Lot #$lotId',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                color: Colors.blue.shade900,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.green.shade300),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.label,
+                                                size: 14,
+                                                color: Colors.green.shade700,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Flexible(
+                                                child: Text(
+                                                  lotDescription,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                    color: Colors.green.shade900,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade100,
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Lot #$lotId',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  color: Colors.blue.shade900,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            formattedDate,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[600],
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              formattedDate,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
+                                          ],
+                                        ),
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
@@ -1448,32 +1487,38 @@ class _POSScreenState extends State<POSScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              DropdownButtonFormField<CustomerModel>(
-                value: _selectedCustomer,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
+              InkWell(
+                onTap: () => _showCustomerSelectionDialog(),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 8,
+                    vertical: 12,
                   ),
-                  prefixIcon: const Icon(Icons.person),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person, color: Colors.grey),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _selectedCustomer?.name ?? 'Select customer',
+                          style: TextStyle(
+                            color: _selectedCustomer == null
+                                ? Colors.grey[600]
+                                : Colors.black,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                    ],
+                  ),
                 ),
-                hint: const Text('Select customer'),
-                items: _customers.map((customer) {
-                  return DropdownMenuItem(
-                    value: customer,
-                    child: Text(customer.name, overflow: TextOverflow.ellipsis),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCustomer = value;
-                  });
-                },
               ),
             ],
           ),
@@ -1509,6 +1554,144 @@ class _POSScreenState extends State<POSScreen> {
         // Checkout section
         _buildCheckoutSection(),
       ],
+    );
+  }
+
+  // Show customer selection dialog with search
+  Future<void> _showCustomerSelectionDialog() async {
+    final TextEditingController searchController = TextEditingController();
+    List<CustomerModel> filteredCustomers = List.from(_customers);
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Select Customer'),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _showAddCustomerDialog();
+                    // Reopen the selection dialog after adding customer
+                    if (mounted) {
+                      await _showCustomerSelectionDialog();
+                    }
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              height: 500,
+              child: Column(
+                children: [
+                  // Search bar
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search by name',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: (query) {
+                      setDialogState(() {
+                        filteredCustomers = _customers.where((customer) {
+                          final nameLower = customer.name.toLowerCase();
+                          final phoneLower = (customer.phone ?? '').toLowerCase();
+                          final searchLower = query.toLowerCase();
+                          return nameLower.contains(searchLower) ||
+                              phoneLower.contains(searchLower);
+                        }).toList();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // Customer list
+                  Expanded(
+                    child: filteredCustomers.isEmpty
+                        ? const Center(
+                            child: Text('No customers found'),
+                          )
+                        : ListView.builder(
+                            itemCount: filteredCustomers.length,
+                            itemBuilder: (context, index) {
+                              final customer = filteredCustomers[index];
+                              final isSelected = _selectedCustomer?.id == customer.id;
+
+                              return Card(
+                                color: isSelected ? Colors.blue[50] : null,
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: isSelected
+                                        ? Colors.blue
+                                        : Colors.grey[300],
+                                    child: Icon(
+                                      Icons.person,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey[700],
+                                    ),
+                                  ),
+                                  title: Text(
+                                    customer.name,
+                                    style: TextStyle(
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  subtitle: customer.phone != null
+                                      ? Text(customer.phone!)
+                                      : null,
+                                  trailing: isSelected
+                                      ? const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.blue,
+                                        )
+                                      : null,
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedCustomer = customer;
+                                    });
+                                    searchController.dispose();
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  searchController.dispose();
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
