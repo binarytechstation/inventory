@@ -176,6 +176,7 @@ class InvoiceService {
     final headerSettings = settings['header'] as Map<String, dynamic>?;
     final footerSettings = settings['footer'] as Map<String, dynamic>?;
     final bodySettings = settings['body'] as Map<String, dynamic>?;
+    final printSettings = settings['print'] as Map<String, dynamic>?;
     final profile = settings['profile'] as Map<String, dynamic>?;
 
     // Get currency symbol from transaction (preserves historical currency)
@@ -186,37 +187,83 @@ class InvoiceService {
       currencySymbol = 'Tk';
     }
 
+    // Watermark settings
+    final showWatermark = (printSettings?['show_watermark'] == 1 ||
+                           printSettings?['show_watermark'] == true);
+    final watermarkText = printSettings?['watermark_text'] as String? ?? 'DRAFT';
+    final watermarkOpacity = (printSettings?['watermark_opacity'] as num?)?.toDouble() ?? 0.1;
+    print('DEBUG: Watermark - show: $showWatermark, text: "$watermarkText", opacity: $watermarkOpacity');
+
+    // Barcode settings
+    final showBarcode = (printSettings?['show_barcode'] == 1 ||
+                         printSettings?['show_barcode'] == true);
+    final barcodeContent = printSettings?['barcode_content'] as String? ?? transaction['invoice_number'] as String;
+    print('DEBUG: Barcode - show: $showBarcode, content: "$barcodeContent"');
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          return pw.Stack(
             children: [
-              // Header
-              _buildHeader(transaction, headerSettings, profile),
-              pw.SizedBox(height: 20),
+              // Main content
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  _buildHeader(transaction, headerSettings, profile),
+                  pw.SizedBox(height: 20),
 
-              // Invoice details
-              _buildInvoiceDetails(transaction),
-              pw.SizedBox(height: 20),
+                  // Invoice details with barcode
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(child: _buildInvoiceDetails(transaction)),
+                      if (showBarcode) ...[
+                        pw.SizedBox(width: 20),
+                        _buildBarcode(barcodeContent),
+                      ],
+                    ],
+                  ),
+                  pw.SizedBox(height: 20),
 
-              // Party details
-              if (bodySettings?['show_party_details'] == 1)
-                _buildPartyDetails(transaction, bodySettings),
-              pw.SizedBox(height: 20),
+                  // Party details
+                  if (bodySettings?['show_party_details'] == 1)
+                    _buildPartyDetails(transaction, bodySettings),
+                  pw.SizedBox(height: 20),
 
-              // Items table
-              _buildItemsTable(transaction, bodySettings, currencySymbol),
-              pw.SizedBox(height: 20),
+                  // Items table
+                  _buildItemsTable(transaction, bodySettings, currencySymbol),
+                  pw.SizedBox(height: 20),
 
-              // Totals
-              _buildTotals(transaction, bodySettings, currencySymbol),
+                  // Totals
+                  _buildTotals(transaction, bodySettings, currencySymbol),
 
-              // Footer
-              pw.Spacer(),
-              if (footerSettings?['show_footer_text'] == 1)
-                _buildFooter(footerSettings, bodySettings, transaction),
+                  // Footer
+                  pw.Spacer(),
+                  if (footerSettings?['show_footer_text'] == 1)
+                    _buildFooter(footerSettings, bodySettings, transaction),
+                ],
+              ),
+              // Watermark overlay
+              if (showWatermark)
+                pw.Center(
+                  child: pw.Transform.rotate(
+                    angle: -0.5,
+                    child: pw.Opacity(
+                      opacity: watermarkOpacity,
+                      child: pw.Text(
+                        watermarkText,
+                        style: pw.TextStyle(
+                          fontSize: 80,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -248,11 +295,42 @@ class InvoiceService {
                          profile?['email'] as String? ??
                          '';
 
-    final showInvoiceTitle = headerSettings?['show_invoice_title'] == 1;
+    // Show flags for basic fields
+    final showAddress = (headerSettings?['show_company_address'] == 1 ||
+                         headerSettings?['show_company_address'] == true);
+    final showPhone = (headerSettings?['show_company_phone'] == 1 ||
+                       headerSettings?['show_company_phone'] == true);
+    final showEmail = (headerSettings?['show_company_email'] == 1 ||
+                       headerSettings?['show_company_email'] == true);
+
+    // Additional header fields
+    final companyTagline = headerSettings?['company_tagline'] as String? ?? '';
+    final companyWebsite = headerSettings?['company_website'] as String? ?? '';
+    final taxId = headerSettings?['tax_id'] as String? ?? '';
+    final registrationNumber = headerSettings?['registration_number'] as String? ?? '';
+
+    // Handle both int and bool for show flags
+    final showTagline = (headerSettings?['show_company_tagline'] == 1 ||
+                         headerSettings?['show_company_tagline'] == true);
+    final showWebsite = (headerSettings?['show_company_website'] == 1 ||
+                         headerSettings?['show_company_website'] == true);
+    final showTaxId = (headerSettings?['show_tax_id'] == 1 ||
+                       headerSettings?['show_tax_id'] == true);
+    final showRegistrationNumber = (headerSettings?['show_registration_number'] == 1 ||
+                                     headerSettings?['show_registration_number'] == true);
+
+    print('DEBUG: Header - showTagline: $showTagline, tagline: "$companyTagline"');
+    print('DEBUG: Header - showWebsite: $showWebsite, website: "$companyWebsite"');
+    print('DEBUG: Header - showTaxId: $showTaxId, taxId: "$taxId"');
+    print('DEBUG: Header - showRegNum: $showRegistrationNumber, regNum: "$registrationNumber"');
+
+    final showInvoiceTitle = (headerSettings?['show_invoice_title'] == 1 ||
+                              headerSettings?['show_invoice_title'] == true);
     final invoiceTitle = headerSettings?['invoice_title'] as String? ?? 'INVOICE';
 
     // Logo settings
-    final showLogo = headerSettings?['show_company_logo'] == 1;
+    final showLogo = (headerSettings?['show_company_logo'] == 1 ||
+                      headerSettings?['show_company_logo'] == true);
     final logoPath = headerSettings?['logo_path'] as String?;
     final logoWidth = (headerSettings?['logo_width'] as int?) ?? 150;
     final logoHeight = (headerSettings?['logo_height'] as int?) ?? 80;
@@ -263,13 +341,22 @@ class InvoiceService {
     if (showLogo && logoPath != null && logoPath.isNotEmpty) {
       try {
         final logoFile = File(logoPath);
+        print('DEBUG: Attempting to load logo from: $logoPath');
+        print('DEBUG: Logo file exists: ${logoFile.existsSync()}');
         if (logoFile.existsSync()) {
-          logoImage = pw.MemoryImage(logoFile.readAsBytesSync());
+          final bytes = logoFile.readAsBytesSync();
+          print('DEBUG: Logo file size: ${bytes.length} bytes');
+          logoImage = pw.MemoryImage(bytes);
+          print('DEBUG: Logo loaded successfully');
+        } else {
+          print('DEBUG: Logo file does not exist at path');
         }
       } catch (e) {
         // Logo loading failed, continue without logo
-        print('Error loading logo: $e');
+        print('ERROR loading logo: $e');
       }
+    } else {
+      print('DEBUG: Logo not shown - showLogo: $showLogo, logoPath: $logoPath');
     }
 
     return pw.Column(
@@ -306,12 +393,27 @@ class InvoiceService {
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
-                        if (companyAddress.isNotEmpty)
+                        if (showTagline && companyTagline.isNotEmpty)
+                          pw.Text(
+                            companyTagline,
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              fontStyle: pw.FontStyle.italic,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                        if (showAddress && companyAddress.isNotEmpty)
                           pw.Text(companyAddress, style: const pw.TextStyle(fontSize: 10)),
-                        if (companyPhone.isNotEmpty)
+                        if (showPhone && companyPhone.isNotEmpty)
                           pw.Text('Tel: $companyPhone', style: const pw.TextStyle(fontSize: 10)),
-                        if (companyEmail.isNotEmpty)
+                        if (showEmail && companyEmail.isNotEmpty)
                           pw.Text('Email: $companyEmail', style: const pw.TextStyle(fontSize: 10)),
+                        if (showWebsite && companyWebsite.isNotEmpty)
+                          pw.Text('Website: $companyWebsite', style: const pw.TextStyle(fontSize: 10)),
+                        if (showTaxId && taxId.isNotEmpty)
+                          pw.Text('Tax ID: $taxId', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                        if (showRegistrationNumber && registrationNumber.isNotEmpty)
+                          pw.Text('Reg. No: $registrationNumber', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -565,8 +667,55 @@ class InvoiceService {
   ) {
     final footerText = footerSettings?['footer_text'] as String? ??
                        'Thank you for your business!';
-    final showTerms = footerSettings?['show_terms_and_conditions'] == 1;
+    final showTerms = (footerSettings?['show_terms_and_conditions'] == 1 ||
+                       footerSettings?['show_terms_and_conditions'] == true);
     final terms = footerSettings?['terms_and_conditions'] as String?;
+
+    // Signature and stamp settings
+    final showSignature = (footerSettings?['show_signature'] == 1 ||
+                           footerSettings?['show_signature'] == true);
+    final signaturePath = footerSettings?['signature_path'] as String?;
+    final signatureLabel = footerSettings?['signature_label'] as String? ?? 'Authorized Signature';
+
+    final showStamp = (footerSettings?['show_stamp'] == 1 ||
+                       footerSettings?['show_stamp'] == true);
+    final stampPath = footerSettings?['stamp_path'] as String?;
+
+    // Load signature image if available
+    pw.ImageProvider? signatureImage;
+    print('DEBUG: Signature - show: $showSignature, path: "$signaturePath"');
+    if (showSignature && signaturePath != null && signaturePath.isNotEmpty) {
+      try {
+        final signatureFile = File(signaturePath);
+        print('DEBUG: Signature file exists: ${signatureFile.existsSync()}');
+        if (signatureFile.existsSync()) {
+          final bytes = signatureFile.readAsBytesSync();
+          print('DEBUG: Signature file size: ${bytes.length} bytes');
+          signatureImage = pw.MemoryImage(bytes);
+          print('DEBUG: Signature loaded successfully');
+        }
+      } catch (e) {
+        print('ERROR loading signature: $e');
+      }
+    }
+
+    // Load stamp image if available
+    pw.ImageProvider? stampImage;
+    print('DEBUG: Stamp - show: $showStamp, path: "$stampPath"');
+    if (showStamp && stampPath != null && stampPath.isNotEmpty) {
+      try {
+        final stampFile = File(stampPath);
+        print('DEBUG: Stamp file exists: ${stampFile.existsSync()}');
+        if (stampFile.existsSync()) {
+          final bytes = stampFile.readAsBytesSync();
+          print('DEBUG: Stamp file size: ${bytes.length} bytes');
+          stampImage = pw.MemoryImage(bytes);
+          print('DEBUG: Stamp loaded successfully');
+        }
+      } catch (e) {
+        print('ERROR loading stamp: $e');
+      }
+    }
 
     // QR code settings are in body settings
     final showQR = bodySettings?['show_qr_code'] == 1;
@@ -597,16 +746,79 @@ class InvoiceService {
     }
 
     return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Divider(),
+        // Terms and conditions (left-aligned)
         if (showTerms && terms != null && terms.isNotEmpty) ...[
           pw.Text(
             'Terms and Conditions',
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
           ),
           pw.SizedBox(height: 5),
-          pw.Text(terms, style: const pw.TextStyle(fontSize: 8)),
-          pw.SizedBox(height: 10),
+          pw.Text(
+            terms,
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: pw.TextAlign.left,
+          ),
+          pw.SizedBox(height: 15),
+        ],
+        // Signature and stamp row
+        if (signatureImage != null || stampImage != null) ...[
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              // Signature section
+              if (signatureImage != null)
+                pw.Column(
+                  children: [
+                    pw.Container(
+                      width: 150,
+                      height: 80,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey300),
+                      ),
+                      child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Container(
+                      width: 150,
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey700)),
+                      ),
+                      padding: const pw.EdgeInsets.only(top: 5),
+                      child: pw.Text(
+                        signatureLabel,
+                        style: const pw.TextStyle(fontSize: 9),
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+              // Stamp section
+              if (stampImage != null)
+                pw.Column(
+                  children: [
+                    pw.Container(
+                      width: 100,
+                      height: 80,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey300),
+                      ),
+                      child: pw.Image(stampImage, fit: pw.BoxFit.contain),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      'Company Stamp',
+                      style: const pw.TextStyle(fontSize: 9),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          pw.SizedBox(height: 15),
         ],
         // Footer text and QR code side by side
         pw.Row(
@@ -643,6 +855,28 @@ class InvoiceService {
               ),
             ],
           ],
+        ),
+      ],
+    );
+  }
+
+  /// Build barcode widget
+  pw.Widget _buildBarcode(String content) {
+    return pw.Column(
+      children: [
+        pw.Container(
+          width: 120,
+          height: 50,
+          child: pw.BarcodeWidget(
+            barcode: pw.Barcode.code128(),
+            data: content,
+            drawText: false,
+          ),
+        ),
+        pw.SizedBox(height: 3),
+        pw.Text(
+          content,
+          style: const pw.TextStyle(fontSize: 8),
         ),
       ],
     );

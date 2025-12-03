@@ -15,7 +15,6 @@ import 'business_info_screen.dart';
 import 'activity_log_screen.dart';
 import 'invoice_settings_main_screen.dart';
 import 'invoice_activity_log_screen.dart';
-import 'advanced_invoice_settings_screen.dart';
 import 'currency_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -150,22 +149,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.receipt,
             title: 'Invoice Settings',
-            subtitle: 'Customize invoice format and numbering',
+            subtitle: 'Customize invoice format, header, footer, body and print settings',
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const InvoiceSettingsMainScreen()),
-              );
-            },
-          ),
-          _buildSettingsTile(
-            icon: Icons.print,
-            title: 'Advanced Invoice Settings',
-            subtitle: 'Configure invoice body, print settings and test print',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AdvancedInvoiceSettingsScreen()),
               );
             },
           ),
