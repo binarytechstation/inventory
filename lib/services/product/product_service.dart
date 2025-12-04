@@ -1,6 +1,6 @@
 import '../../data/database/database_helper.dart';
-import '../../data/models/product_lot_model.dart';
 import '../../data/models/lot_model.dart';
+import '../../data/models/product_lot_model.dart';
 import '../../data/models/product_model.dart';
 
 /// Product Service for lot-based inventory system
@@ -9,7 +9,9 @@ class ProductService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
   // Get all products across all lots (aggregated)
-  Future<List<Map<String, dynamic>>> getAllProductsAggregated({String sortBy = 'product_name'}) async {
+  Future<List<Map<String, dynamic>>> getAllProductsAggregated({
+    String sortBy = 'product_name',
+  }) async {
     final db = await _dbHelper.database;
 
     // Aggregate products across all lots BY PRODUCT NAME
@@ -44,13 +46,15 @@ class ProductService {
   Future<List<Map<String, dynamic>>> getProductsInLot(int lotId) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.product_id,
         p.lot_id,
         p.product_name,
         p.unit_price,
         p.unit,
+        
         p.category,
         p.sku,
         p.barcode,
@@ -67,16 +71,21 @@ class ProductService {
       WHERE p.lot_id = ?
         AND p.is_active = 1
       ORDER BY p.product_name ASC
-    ''', [lotId]);
+    ''',
+      [lotId],
+    );
 
     return maps;
   }
 
   // Get all lots for a specific product (by product_name)
-  Future<List<Map<String, dynamic>>> getAllLotsForProduct(String productName) async {
+  Future<List<Map<String, dynamic>>> getAllLotsForProduct(
+    String productName,
+  ) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.product_id,
         p.lot_id,
@@ -100,7 +109,9 @@ class ProductService {
       WHERE p.product_name = ?
         AND p.is_active = 1
       ORDER BY l.received_date DESC, p.lot_id DESC
-    ''', [productName]);
+    ''',
+      [productName],
+    );
 
     return maps;
   }
@@ -137,7 +148,8 @@ class ProductService {
   Future<Map<String, dynamic>?> getProductByName(String productName) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         product_name,
         unit,
@@ -147,7 +159,9 @@ class ProductService {
       FROM products
       WHERE product_name = ? AND is_active = 1
       LIMIT 1
-    ''', [productName]);
+    ''',
+      [productName],
+    );
 
     return maps.isNotEmpty ? maps.first : null;
   }
@@ -185,10 +199,7 @@ class ProductService {
 
     await db.update(
       'products',
-      {
-        'is_active': 0,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
+      {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
       where: 'product_name = ?',
       whereArgs: [productName],
     );
@@ -198,7 +209,8 @@ class ProductService {
   Future<Map<String, dynamic>?> getProductAggregated(int productId) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.product_id,
         p.product_name,
@@ -217,16 +229,22 @@ class ProductService {
       WHERE p.product_id = ?
         AND p.is_active = 1
       GROUP BY p.product_id, p.product_name, p.unit, p.category, p.product_image, p.product_description
-    ''', [productId]);
+    ''',
+      [productId],
+    );
 
     return maps.isNotEmpty ? maps.first : null;
   }
 
   // Get specific product in specific lot
-  Future<Map<String, dynamic>?> getProductInLot(int productId, int lotId) async {
+  Future<Map<String, dynamic>?> getProductInLot(
+    int productId,
+    int lotId,
+  ) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.*,
         s.count as current_stock,
@@ -239,7 +257,9 @@ class ProductService {
       INNER JOIN lots l ON p.lot_id = l.lot_id
       WHERE p.product_id = ? AND p.lot_id = ?
       LIMIT 1
-    ''', [productId, lotId]);
+    ''',
+      [productId, lotId],
+    );
 
     return maps.isNotEmpty ? maps.first : null;
   }
@@ -248,7 +268,8 @@ class ProductService {
   Future<List<Map<String, dynamic>>> searchProducts(String query) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.product_id,
         p.lot_id,
@@ -269,16 +290,21 @@ class ProductService {
         AND p.is_active = 1
         AND s.count > 0
       ORDER BY l.received_date DESC, p.product_name ASC
-    ''', ['%$query%', '%$query%', '%$query%']);
+    ''',
+      ['%$query%', '%$query%', '%$query%'],
+    );
 
     return maps;
   }
 
   // Get products by category (aggregated)
-  Future<List<Map<String, dynamic>>> getProductsByCategory(String category) async {
+  Future<List<Map<String, dynamic>>> getProductsByCategory(
+    String category,
+  ) async {
     final db = await _dbHelper.database;
 
-    final maps = await db.rawQuery('''
+    final maps = await db.rawQuery(
+      '''
       SELECT
         p.product_id,
         p.product_name,
@@ -292,7 +318,9 @@ class ProductService {
       WHERE p.category = ? AND p.is_active = 1
       GROUP BY p.product_id, p.product_name, p.unit, p.category
       ORDER BY p.product_name ASC
-    ''', [category]);
+    ''',
+      [category],
+    );
 
     return maps;
   }
@@ -476,14 +504,14 @@ class ProductService {
 
     // Try product_master first
     final masterResult = await db.rawQuery(
-      'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM product_master'
+      'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM product_master',
     );
 
     final masterId = masterResult.first['next_id'] as int;
 
     // Also check products table
     final productsResult = await db.rawQuery(
-      'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products'
+      'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products',
     );
 
     final productsId = productsResult.first['next_id'] as int;
@@ -604,7 +632,11 @@ class ProductService {
 
     // Get or create default lot
     int defaultLotId = 1;
-    final lots = await db.query('lots', where: 'lot_id = ?', whereArgs: [defaultLotId]);
+    final lots = await db.query(
+      'lots',
+      where: 'lot_id = ?',
+      whereArgs: [defaultLotId],
+    );
 
     if (lots.isEmpty) {
       // Create default lot if it doesn't exist
@@ -729,10 +761,7 @@ class ProductService {
       if (lotName != null) {
         await txn.update(
           'products',
-          {
-            'product_name': lotName,
-            'updated_at': now,
-          },
+          {'product_name': lotName, 'updated_at': now},
           where: 'product_id = ? AND lot_id = ?',
           whereArgs: [productId, lotId],
         );
@@ -767,11 +796,7 @@ class ProductService {
 
         await txn.update(
           'stock',
-          {
-            'count': currentStock,
-            'last_stock_update': now,
-            'updated_at': now,
-          },
+          {'count': currentStock, 'last_stock_update': now, 'updated_at': now},
           where: 'product_id = ? AND lot_id = ?',
           whereArgs: [productId, lotId],
         );
@@ -794,10 +819,7 @@ class ProductService {
       if (receivedDate != null) {
         await txn.update(
           'lots',
-          {
-            'received_date': receivedDate,
-            'updated_at': now,
-          },
+          {'received_date': receivedDate, 'updated_at': now},
           where: 'lot_id = ?',
           whereArgs: [lotId],
         );
@@ -807,10 +829,7 @@ class ProductService {
       if (notes != null) {
         await txn.update(
           'lots',
-          {
-            'description': notes,
-            'updated_at': now,
-          },
+          {'description': notes, 'updated_at': now},
           where: 'lot_id = ?',
           whereArgs: [lotId],
         );
@@ -819,7 +838,8 @@ class ProductService {
   }
 
   /// Get products grouped by category
-  Future<Map<String, List<Map<String, dynamic>>>> getProductsGroupedByCategory() async {
+  Future<Map<String, List<Map<String, dynamic>>>>
+  getProductsGroupedByCategory() async {
     final products = await getAllProducts();
     final Map<String, List<Map<String, dynamic>>> grouped = {};
 

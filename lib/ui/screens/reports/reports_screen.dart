@@ -349,6 +349,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _currentDateRange = dateRange;
       });
 
+      // Check if there are any transactions
+      final totalTransactions = (report['total_transactions'] as int?) ?? 0;
+
+      if (totalTransactions == 0) {
+        _showEmptyReportDialog(
+          context,
+          'Sales Summary Report',
+          Icons.shopping_bag_outlined,
+          'No sales found',
+          'No sales transactions found in the selected period.\nTry selecting a different date range or make some sales.',
+          dateRange,
+        );
+        return;
+      }
+
       _showReportDialog(
         context,
         'Sales Summary Report',
@@ -404,6 +419,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _currentDateRange = dateRange;
       });
 
+      // Check if there are any transactions
+      final totalTransactions = (report['total_transactions'] as int?) ?? 0;
+
+      if (totalTransactions == 0) {
+        _showEmptyReportDialog(
+          context,
+          'Purchase Summary Report',
+          Icons.shopping_cart_outlined,
+          'No purchases found',
+          'No purchase transactions found in the selected period.\nTry selecting a different date range or make some purchases.',
+          dateRange,
+        );
+        return;
+      }
+
       _showReportDialog(
         context,
         'Purchase Summary Report',
@@ -443,6 +473,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       final report = await _reportsService.getInventoryReport();
 
+      print('DEBUG INVENTORY REPORT: Got ${report.length} items');
+      if (report.isNotEmpty) {
+        print('DEBUG FIRST ITEM: ${report.first}');
+        print('DEBUG FIRST ITEM KEYS: ${report.first.keys.toList()}');
+      }
+
       if (!context.mounted) return;
       Navigator.pop(context);
 
@@ -450,6 +486,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
       setState(() {
         _currentInventoryData = report;
       });
+
+      // Check if there are any products
+      if (report.isEmpty) {
+        _showEmptyReportDialog(
+          context,
+          'Inventory Report',
+          Icons.inventory_2_outlined,
+          'No products in inventory',
+          'Add products to your inventory to see the inventory report.',
+          null,
+        );
+        return;
+      }
 
       // Calculate totals
       double totalValue = 0;
@@ -459,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       for (var item in report) {
         totalValue += (item['inventory_value'] as num?)?.toDouble() ?? 0;
         final stock = (item['current_stock'] as num?)?.toDouble() ?? 0;
-        final reorderLevel = (item['reorder_level'] as int?) ?? 0;
+        final reorderLevel = (item['reorder_level'] as num?)?.toDouble() ?? 0;
         if (stock <= reorderLevel) lowStockCount++;
       }
 
@@ -587,6 +636,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _currentProfitLossData = report;
         _currentDateRange = dateRange;
       });
+
+      // Check if there is any revenue
+      final totalRevenue = (report['total_revenue'] as num?)?.toDouble() ?? 0;
+
+      if (totalRevenue == 0) {
+        _showEmptyReportDialog(
+          context,
+          'Profit & Loss Report',
+          Icons.account_balance_outlined,
+          'No financial data',
+          'No revenue or transactions found in the selected period.\nTry selecting a different date range or make some sales.',
+          dateRange,
+        );
+        return;
+      }
 
       final netProfit = (report['net_profit'] as num).toDouble();
       final isProfit = netProfit >= 0;
@@ -725,6 +789,63 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // Helper: Empty Report Dialog
+  void _showEmptyReportDialog(
+    BuildContext context,
+    String title,
+    IconData icon,
+    String message,
+    String subtitle,
+    DateTimeRange? dateRange,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 500,
+          height: 300,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              if (dateRange != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Date Range: ${_formatDate(dateRange.start)} - ${_formatDate(dateRange.end)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+              ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Helper: Inventory Report Dialog
   void _showInventoryReportDialog(
     BuildContext context,
@@ -799,35 +920,63 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              // Product list
+              // Product list or empty state
               Expanded(
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Product')),
-                      DataColumn(label: Text('SKU')),
-                      DataColumn(label: Text('Stock')),
-                      DataColumn(label: Text('Value')),
-                    ],
-                    rows: items.map((item) {
-                      final stock = (item['current_stock'] as num?)?.toDouble() ?? 0;
-                      final reorderLevel = (item['reorder_level'] as int?) ?? 0;
-                      final isLowStock = stock <= reorderLevel;
+                child: items.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No products in inventory',
+                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add products to see inventory details',
+                              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: DataTable(
+                          columns: const [
+                            DataColumn(label: Text('Product')),
+                            DataColumn(label: Text('Lots')),
+                            DataColumn(label: Text('Stock')),
+                            DataColumn(label: Text('Value')),
+                          ],
+                          rows: items.map((item) {
+                            final stock = (item['current_stock'] as num?)?.toDouble() ?? 0;
+                            final reorderLevel = (item['reorder_level'] as num?)?.toDouble() ?? 0;
+                            final lotCount = (item['lot_count'] as int?) ?? 0;
+                            final isLowStock = stock <= reorderLevel;
 
-                      return DataRow(
-                        color: isLowStock
-                            ? WidgetStateProperty.all(Colors.orange[50])
-                            : null,
-                        cells: [
-                          DataCell(Text(item['name'] ?? '')),
-                          DataCell(Text(item['sku'] ?? '')),
-                          DataCell(Text(stock.toStringAsFixed(1))),
-                          DataCell(Text('$_currencySymbol${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
+                            return DataRow(
+                              color: isLowStock
+                                  ? WidgetStateProperty.all(Colors.orange[50])
+                                  : null,
+                              cells: [
+                                DataCell(
+                                  SizedBox(
+                                    width: 200,
+                                    child: Text(
+                                      item['name'] ?? '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                                DataCell(Text(lotCount.toString())),
+                                DataCell(Text(stock.toStringAsFixed(1))),
+                                DataCell(Text('$_currencySymbol${(item['inventory_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -862,26 +1011,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Text('Period: ${_formatDate(dateRange.start)} - ${_formatDate(dateRange.end)}'),
               const SizedBox(height: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Product')),
-                      DataColumn(label: Text('Qty Sold')),
-                      DataColumn(label: Text('Revenue')),
-                      DataColumn(label: Text('Avg Price')),
-                    ],
-                    rows: products.map((product) {
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(product['name'] ?? '')),
-                          DataCell(Text(((product['total_quantity'] as num?)?.toDouble() ?? 0).toStringAsFixed(0))),
-                          DataCell(Text('\$${(product['total_revenue'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                          DataCell(Text('\$${(product['avg_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
+                child: products.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.trending_up_outlined, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No sales data available',
+                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Make some sales to see product performance',
+                              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: DataTable(
+                          columns: const [
+                            DataColumn(label: Text('Product')),
+                            DataColumn(label: Text('Qty Sold')),
+                            DataColumn(label: Text('Revenue')),
+                            DataColumn(label: Text('Avg Price')),
+                          ],
+                          rows: products.map((product) {
+                            return DataRow(
+                              cells: [
+                                DataCell(Text(product['name'] ?? '')),
+                                DataCell(Text(((product['total_quantity'] as num?)?.toDouble() ?? 0).toStringAsFixed(0))),
+                                DataCell(Text('\$${(product['total_revenue'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                                DataCell(Text('\$${(product['avg_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -905,26 +1073,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
         content: SizedBox(
           width: 800,
           height: 600,
-          child: SingleChildScrollView(
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Customer')),
-                DataColumn(label: Text('Email')),
-                DataColumn(label: Text('Sales')),
-                DataColumn(label: Text('Balance')),
-              ],
-              rows: customers.map((customer) {
-                return DataRow(
-                  cells: [
-                    DataCell(Text(customer['name'] ?? '')),
-                    DataCell(Text(customer['email'] ?? '')),
-                    DataCell(Text('\$${(customer['total_sales'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                    DataCell(Text('\$${(customer['current_balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                  ],
-                );
-              }).toList(),
-            ),
-          ),
+          child: customers.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No customers found',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add customers to see their reports',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: DataTable(
+                    columns: const [
+                      DataColumn(label: Text('Customer')),
+                      DataColumn(label: Text('Email')),
+                      DataColumn(label: Text('Sales')),
+                      DataColumn(label: Text('Balance')),
+                    ],
+                    rows: customers.map((customer) {
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(customer['name'] ?? '')),
+                          DataCell(Text(customer['email'] ?? '')),
+                          DataCell(Text('\$${(customer['total_sales'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                          DataCell(Text('\$${(customer['current_balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
         ),
         actions: [
           TextButton(
@@ -945,26 +1132,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
         content: SizedBox(
           width: 800,
           height: 600,
-          child: SingleChildScrollView(
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Supplier')),
-                DataColumn(label: Text('Email')),
-                DataColumn(label: Text('Purchases')),
-                DataColumn(label: Text('Amount')),
-              ],
-              rows: suppliers.map((supplier) {
-                return DataRow(
-                  cells: [
-                    DataCell(Text(supplier['name'] ?? '')),
-                    DataCell(Text(supplier['email'] ?? '')),
-                    DataCell(Text((supplier['total_purchases'] as int?)?.toString() ?? '0')),
-                    DataCell(Text('\$${(supplier['total_amount_purchased'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                  ],
-                );
-              }).toList(),
-            ),
-          ),
+          child: suppliers.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No suppliers found',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add suppliers to see their reports',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: DataTable(
+                    columns: const [
+                      DataColumn(label: Text('Supplier')),
+                      DataColumn(label: Text('Email')),
+                      DataColumn(label: Text('Purchases')),
+                      DataColumn(label: Text('Amount')),
+                    ],
+                    rows: suppliers.map((supplier) {
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(supplier['name'] ?? '')),
+                          DataCell(Text(supplier['email'] ?? '')),
+                          DataCell(Text((supplier['total_purchases'] as int?)?.toString() ?? '0')),
+                          DataCell(Text('\$${(supplier['total_amount_purchased'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
         ),
         actions: [
           TextButton(
@@ -995,26 +1201,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Text('Period: ${_formatDate(dateRange.start)} - ${_formatDate(dateRange.end)}'),
               const SizedBox(height: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Category')),
-                      DataColumn(label: Text('Transactions')),
-                      DataColumn(label: Text('Quantity')),
-                      DataColumn(label: Text('Amount')),
-                    ],
-                    rows: categories.map((category) {
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(category['category']?.toString() ?? 'Uncategorized')),
-                          DataCell(Text((category['transaction_count'] as int?)?.toString() ?? '0')),
-                          DataCell(Text(((category['total_quantity'] as num?)?.toDouble() ?? 0).toStringAsFixed(0))),
-                          DataCell(Text('\$${(category['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
+                child: categories.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.category_outlined, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No category data available',
+                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Make sales in the selected period to see category analysis',
+                              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: DataTable(
+                          columns: const [
+                            DataColumn(label: Text('Category')),
+                            DataColumn(label: Text('Transactions')),
+                            DataColumn(label: Text('Quantity')),
+                            DataColumn(label: Text('Amount')),
+                          ],
+                          rows: categories.map((category) {
+                            return DataRow(
+                              cells: [
+                                DataCell(Text(category['category']?.toString() ?? 'Uncategorized')),
+                                DataCell(Text((category['transaction_count'] as int?)?.toString() ?? '0')),
+                                DataCell(Text(((category['total_quantity'] as num?)?.toDouble() ?? 0).toStringAsFixed(0))),
+                                DataCell(Text('\$${(category['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
               ),
             ],
           ),

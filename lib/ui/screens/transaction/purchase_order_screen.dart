@@ -857,7 +857,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
   final _quantityController = TextEditingController();
   final _buyingPriceController = TextEditingController();
   final _sellingPriceController = TextEditingController();
-  final _reorderLevelController = TextEditingController();
+  final _reorderLevelController = TextEditingController(text: '2');
   final _skuController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _categoryController = TextEditingController();
@@ -1173,9 +1173,16 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                       child: TextFormField(
                         controller: _categoryController,
                         decoration: const InputDecoration(
-                          labelText: 'Category',
+                          labelText: 'Category *',
                           border: OutlineInputBorder(),
                         ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter category';
+                          }
+                          return null;
+                        },
+                        textCapitalization: TextCapitalization.words,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1183,10 +1190,20 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                       child: TextFormField(
                         controller: _reorderLevelController,
                         decoration: const InputDecoration(
-                          labelText: 'Reorder Level',
+                          labelText: 'Reorder Level *',
                           border: OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter reorder level';
+                          }
+                          final level = int.tryParse(value.trim());
+                          if (level == null || level < 0) {
+                            return 'Enter valid number';
+                          }
+                          return null;
+                        },
                       ),
                     ),
                   ],

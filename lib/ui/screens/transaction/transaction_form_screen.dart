@@ -1535,6 +1535,8 @@ class _InlineProductFormDialogState extends State<_InlineProductFormDialog> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _skuController = TextEditingController();
   final TextEditingController _unitController = TextEditingController(text: 'piece');
+  final TextEditingController _categoryController = TextEditingController();
+  final TextEditingController _reorderLevelController = TextEditingController(text: '2');
   final TextEditingController _purchasePriceController = TextEditingController(text: '0');
   final TextEditingController _sellingPriceController = TextEditingController(text: '0');
   final TextEditingController _taxRateController = TextEditingController(text: '0');
@@ -1546,6 +1548,8 @@ class _InlineProductFormDialogState extends State<_InlineProductFormDialog> {
     _nameController.dispose();
     _skuController.dispose();
     _unitController.dispose();
+    _categoryController.dispose();
+    _reorderLevelController.dispose();
     _purchasePriceController.dispose();
     _sellingPriceController.dispose();
     _taxRateController.dispose();
@@ -1564,10 +1568,13 @@ class _InlineProductFormDialogState extends State<_InlineProductFormDialog> {
             ? null
             : _skuController.text.trim(),
         unit: _unitController.text.trim(),
+        category: _categoryController.text.trim().isEmpty
+            ? null
+            : _categoryController.text.trim(),
         defaultPurchasePrice: double.tryParse(_purchasePriceController.text.trim()) ?? 0,
         defaultSellingPrice: double.tryParse(_sellingPriceController.text.trim()) ?? 0,
         taxRate: double.tryParse(_taxRateController.text.trim()) ?? 0,
-        reorderLevel: 0,
+        reorderLevel: int.tryParse(_reorderLevelController.text.trim()) ?? 2,
         isActive: true,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -1649,6 +1656,47 @@ class _InlineProductFormDialogState extends State<_InlineProductFormDialog> {
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter unit';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _categoryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Category *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.category),
+                    hintText: 'e.g., Electronics, Food',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter category';
+                    }
+                    return null;
+                  },
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _reorderLevelController,
+                  decoration: const InputDecoration(
+                    labelText: 'Reorder Level *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.inventory),
+                    hintText: 'Minimum stock level',
+                  ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter reorder level';
+                    }
+                    final level = int.tryParse(value.trim());
+                    if (level == null || level < 0) {
+                      return 'Enter valid number';
                     }
                     return null;
                   },

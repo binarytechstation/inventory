@@ -242,8 +242,7 @@ class InvoiceService {
 
                   // Footer
                   pw.Spacer(),
-                  if (footerSettings?['show_footer_text'] == 1)
-                    _buildFooter(footerSettings, bodySettings, transaction),
+                  _buildFooter(footerSettings, bodySettings, transaction),
                 ],
               ),
               // Watermark overlay
@@ -665,11 +664,14 @@ class InvoiceService {
     Map<String, dynamic>? bodySettings,
     Map<String, dynamic> transaction,
   ) {
+    final showFooterText = (footerSettings?['show_footer_text'] == 1 ||
+                            footerSettings?['show_footer_text'] == true);
     final footerText = footerSettings?['footer_text'] as String? ??
                        'Thank you for your business!';
     final showTerms = (footerSettings?['show_terms_and_conditions'] == 1 ||
                        footerSettings?['show_terms_and_conditions'] == true);
     final terms = footerSettings?['terms_and_conditions'] as String?;
+    print('DEBUG: Footer - showFooterText: $showFooterText, text: "$footerText"');
 
     // Signature and stamp settings
     final showSignature = (footerSettings?['show_signature'] == 1 ||
@@ -718,9 +720,10 @@ class InvoiceService {
     }
 
     // QR code settings are in body settings
-    final showQR = bodySettings?['show_qr_code'] == 1;
+    final showQR = (bodySettings?['show_qr_code'] == 1 || bodySettings?['show_qr_code'] == true);
     final qrContent = bodySettings?['qr_code_content'] as String? ?? '{invoice_number}';
     final qrSize = (bodySettings?['qr_code_size'] as int?) ?? 100;
+    print('DEBUG: QR Code - show: $showQR, content: "$qrContent", size: $qrSize');
 
     // Generate QR code if enabled
     pw.Widget? qrWidget;
@@ -825,24 +828,25 @@ class InvoiceService {
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    footerText,
-                    style: const pw.TextStyle(fontSize: 10),
-                  ),
-                  pw.SizedBox(height: 5),
-                  pw.Text(
-                    'Generated on ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
-                    style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-                  ),
-                ],
+            if (showFooterText)
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      footerText,
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      'Generated on ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
+                      style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                    ),
+                  ],
+                ),
               ),
-            ),
             if (qrWidget != null) ...[
-              pw.SizedBox(width: 20),
+              if (showFooterText) pw.SizedBox(width: 20),
               pw.Column(
                 children: [
                   qrWidget,

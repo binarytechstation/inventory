@@ -270,23 +270,38 @@ class _AdvancedInvoiceSettingsScreenState extends State<AdvancedInvoiceSettingsS
           ],
         ),
         actions: [
-          DropdownButton<String>(
-            value: _selectedInvoiceType,
-            dropdownColor: Theme.of(context).appBarTheme.backgroundColor,
-            style: const TextStyle(color: Colors.white),
-            underline: Container(),
-            items: const [
-              DropdownMenuItem(value: 'SALE', child: Text('Sales Invoice')),
-              DropdownMenuItem(value: 'PURCHASE', child: Text('Purchase Invoice')),
-            ],
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _selectedInvoiceType = value;
-                });
-                _loadSettings();
-              }
-            },
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: DropdownButton<String>(
+              value: _selectedInvoiceType,
+              dropdownColor: Theme.of(context).appBarTheme.backgroundColor ?? Colors.blue[700],
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              underline: Container(),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+              iconEnabledColor: Colors.white,
+              items: const [
+                DropdownMenuItem(
+                  value: 'SALE',
+                  child: Text('Sales Invoice', style: TextStyle(color: Colors.white)),
+                ),
+                DropdownMenuItem(
+                  value: 'PURCHASE',
+                  child: Text('Purchase Invoice', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedInvoiceType = value;
+                  });
+                  _loadSettings();
+                }
+              },
+            ),
           ),
           const SizedBox(width: 16),
         ],

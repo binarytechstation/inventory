@@ -37,12 +37,30 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
   Future<void> _loadInvoiceTypes() async {
     setState(() => _isLoading = true);
     try {
-      final types = await _service.getAllInvoiceTypes();
+      var types = await _service.getAllInvoiceTypes();
+      print('DEBUG: Loaded ${types.length} invoice types');
+
+      // If no types exist, seed default types
+      if (types.isEmpty) {
+        print('DEBUG: No invoice types found, seeding defaults...');
+        await _seedDefaultInvoiceTypes();
+        types = await _service.getAllInvoiceTypes();
+        print('DEBUG: After seeding, loaded ${types.length} invoice types');
+      }
+
+      for (var type in types) {
+        print('DEBUG: Invoice type: ${type['type_code']} - ${type['type_name']}');
+      }
       setState(() {
         _invoiceTypes = types;
+        // Set default selection if types are available
+        if (_invoiceTypes.isNotEmpty && !_invoiceTypes.any((t) => t['type_code'] == _selectedInvoiceType)) {
+          _selectedInvoiceType = _invoiceTypes.first['type_code'] as String;
+        }
         _isLoading = false;
       });
     } catch (e) {
+      print('DEBUG ERROR: Failed to load invoice types: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -52,6 +70,44 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
           ),
         );
       }
+    }
+  }
+
+  Future<void> _seedDefaultInvoiceTypes() async {
+    final now = DateTime.now().toIso8601String();
+    final invoiceTypes = [
+      {
+        'type_code': 'SALE',
+        'type_name': 'Sales Invoice',
+        'description': 'Invoice for product sales',
+        'prefix': 'INV',
+        'title': 'SALES INVOICE',
+        'enable_party_selection': 1,
+        'party_label': 'Customer',
+        'color_code': '#4CAF50',
+        'is_active': 1,
+        'display_order': 1,
+        'created_at': now,
+        'updated_at': now,
+      },
+      {
+        'type_code': 'PURCHASE',
+        'type_name': 'Purchase Invoice',
+        'description': 'Invoice for product purchases',
+        'prefix': 'PUR',
+        'title': 'PURCHASE INVOICE',
+        'enable_party_selection': 1,
+        'party_label': 'Supplier',
+        'color_code': '#2196F3',
+        'is_active': 1,
+        'display_order': 2,
+        'created_at': now,
+        'updated_at': now,
+      },
+    ];
+
+    for (var type in invoiceTypes) {
+      await _service.saveInvoiceType(type);
     }
   }
 
@@ -83,40 +139,70 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
             ),
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : DropdownButtonFormField<String>(
-                    value: _selectedInvoiceType,
-                    decoration: InputDecoration(
-                      labelText: 'Select Invoice Type',
-                      prefixIcon: const Icon(Icons.receipt_long),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                : Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[400]!),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.grey[50],
                     ),
-                    items: _invoiceTypes.map((type) {
-                      return DropdownMenuItem<String>(
-                        value: type['type_code'] as String,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: _parseColor(type['color_code'] as String?),
-                                shape: BoxShape.circle,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.receipt_long, color: Colors.grey),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => _showInvoiceTypeDialog(),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          if (_invoiceTypes.any((type) => type['type_code'] == _selectedInvoiceType)) ...[
+                                            Container(
+                                              width: 16,
+                                              height: 16,
+                                              decoration: BoxDecoration(
+                                                color: _parseColor(
+                                                  _invoiceTypes.firstWhere(
+                                                    (type) => type['type_code'] == _selectedInvoiceType,
+                                                  )['color_code'] as String?,
+                                                ),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                _invoiceTypes.firstWhere(
+                                                  (type) => type['type_code'] == _selectedInvoiceType,
+                                                )['type_name'] as String,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(fontSize: 16),
+                                              ),
+                                            ),
+                                          ] else
+                                            const Text(
+                                              'Select Invoice Type',
+                                              style: TextStyle(fontSize: 16),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down, color: Colors.blue),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Text(type['type_name'] as String),
-                          ],
+                          ),
                         ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedInvoiceType = value);
-                      }
-                    },
+                      ],
+                    ),
                   ),
           ),
           // Tab Bar with better styling
@@ -152,16 +238,69 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
                 : TabBarView(
                     controller: _tabController,
                     children: [
-                      GeneralSettingsTab(invoiceType: _selectedInvoiceType),
-                      HeaderSettingsTab(invoiceType: _selectedInvoiceType),
-                      FooterSettingsTab(invoiceType: _selectedInvoiceType),
-                      BodySettingsTab(invoiceType: _selectedInvoiceType),
-                      PrintSettingsTab(invoiceType: _selectedInvoiceType),
+                      GeneralSettingsTab(key: ValueKey('general_$_selectedInvoiceType'), invoiceType: _selectedInvoiceType),
+                      HeaderSettingsTab(key: ValueKey('header_$_selectedInvoiceType'), invoiceType: _selectedInvoiceType),
+                      FooterSettingsTab(key: ValueKey('footer_$_selectedInvoiceType'), invoiceType: _selectedInvoiceType),
+                      BodySettingsTab(key: ValueKey('body_$_selectedInvoiceType'), invoiceType: _selectedInvoiceType),
+                      PrintSettingsTab(key: ValueKey('print_$_selectedInvoiceType'), invoiceType: _selectedInvoiceType),
                     ],
                   ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showInvoiceTypeDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Invoice Type'),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          content: SizedBox(
+            width: 300,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _invoiceTypes.length,
+              itemBuilder: (context, index) {
+                final type = _invoiceTypes[index];
+                final typeCode = type['type_code'] as String;
+                final typeName = type['type_name'] as String;
+                final colorCode = type['color_code'] as String?;
+                final isSelected = typeCode == _selectedInvoiceType;
+
+                return ListTile(
+                  leading: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: _parseColor(colorCode),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(typeName),
+                  trailing: isSelected
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  selected: isSelected,
+                  selectedTileColor: Colors.blue.withValues(alpha: 0.1),
+                  onTap: () {
+                    setState(() => _selectedInvoiceType = typeCode);
+                    Navigator.of(context).pop();
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
     );
   }
 

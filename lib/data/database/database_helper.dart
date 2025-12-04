@@ -636,6 +636,9 @@ class DatabaseHelper {
       'updated_at': DateTime.now().toIso8601String(),
     });
 
+    // Seed invoice types
+    await _seedInvoiceTypeSettings(db);
+
     // Create default settings
     await db.insert('settings', {
       'key': 'invoice_prefix',

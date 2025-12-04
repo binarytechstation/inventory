@@ -729,11 +729,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await txn.delete('transaction_lines');
         await txn.delete('transactions');
 
-        // Delete product batches
-        await txn.delete('product_batches');
-
-        // Delete all products, suppliers, customers
+        // Delete lot-based inventory tables (in correct order to respect foreign keys)
+        await txn.delete('lot_history');
+        await txn.delete('stock');
         await txn.delete('products');
+        await txn.delete('product_master');
+        await txn.delete('lots');
+
+        // Delete all suppliers and customers
         await txn.delete('suppliers');
         await txn.delete('customers');
 
