@@ -139,7 +139,20 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Suppliers'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.local_shipping, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Suppliers'),
+          ],
+        ),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort),

@@ -8,6 +8,7 @@ import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/providers/auth_provider.dart';
 import 'ui/providers/app_provider.dart';
+import 'ui/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,41 +35,25 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => AppProvider()),
       ],
-      child: MaterialApp(
-        title: 'Inventory Management System',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(
-            centerTitle: false,
-            elevation: 2,
-          ),
-          cardTheme: CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
-        ),
-        home: const AppInitializer(),
-        routes: {
-          '/activation': (context) => const ActivationScreen(),
-          '/login': (context) => const LoginScreen(),
-          '/dashboard': (context) => const DashboardScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Inventory Management System',
+            debugShowCheckedModeBanner: false,
+            theme: themeProvider.lightTheme,
+            darkTheme: themeProvider.darkTheme,
+            themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            home: const AppInitializer(),
+            routes: {
+              '/activation': (context) => const ActivationScreen(),
+              '/login': (context) => const LoginScreen(),
+              '/dashboard': (context) => const DashboardScreen(),
+            },
+          );
         },
       ),
     );

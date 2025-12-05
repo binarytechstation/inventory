@@ -218,14 +218,21 @@ class _POSScreenState extends State<POSScreen> {
                     children: [
                       Text(
                         'Select Lot(s) for $productName',
-                        style: const TextStyle(fontSize: 18),
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${lots.length} lot(s) available',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey[600],
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
                           fontWeight: FontWeight.normal,
                         ),
                       ),
@@ -265,16 +272,20 @@ class _POSScreenState extends State<POSScreen> {
                       }
                     }
 
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       elevation: isSelected ? 4 : 2,
-                      color: isSelected ? Colors.blue[50] : null,
+                      color: isSelected
+                          ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue[50])
+                          : null,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
                           color: isSelected
                               ? Colors.blue
-                              : Colors.grey.shade300,
+                              : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                           width: isSelected ? 2 : 1,
                         ),
                       ),
@@ -310,10 +321,14 @@ class _POSScreenState extends State<POSScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             gradient: LinearGradient(
-                                              colors: [Colors.green.shade100, Colors.green.shade50],
+                                              colors: isDark
+                                                  ? [Colors.green.shade900.withValues(alpha: 0.3), Colors.green.shade800.withValues(alpha: 0.3)]
+                                                  : [Colors.green.shade100, Colors.green.shade50],
                                             ),
                                             borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: Colors.green.shade300),
+                                            border: Border.all(
+                                              color: isDark ? Colors.green.shade700 : Colors.green.shade300,
+                                            ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -321,7 +336,7 @@ class _POSScreenState extends State<POSScreen> {
                                               Icon(
                                                 Icons.label,
                                                 size: 14,
-                                                color: Colors.green.shade700,
+                                                color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                                               ),
                                               const SizedBox(width: 6),
                                               Flexible(
@@ -330,7 +345,7 @@ class _POSScreenState extends State<POSScreen> {
                                                   style: TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 13,
-                                                    color: Colors.green.shade900,
+                                                    color: isDark ? Colors.green.shade200 : Colors.green.shade900,
                                                   ),
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
@@ -347,7 +362,9 @@ class _POSScreenState extends State<POSScreen> {
                                                 vertical: 4,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: Colors.blue.shade100,
+                                                color: isDark
+                                                    ? Colors.blue.shade900.withValues(alpha: 0.3)
+                                                    : Colors.blue.shade100,
                                                 borderRadius:
                                                     BorderRadius.circular(6),
                                               ),
@@ -356,7 +373,7 @@ class _POSScreenState extends State<POSScreen> {
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
-                                                  color: Colors.blue.shade900,
+                                                  color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
                                                 ),
                                               ),
                                             ),
@@ -1277,11 +1294,16 @@ class _POSScreenState extends State<POSScreen> {
       priceDisplay = '$_currencySymbol${sellingPrice.toStringAsFixed(2)}';
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200, width: 1),
+        side: BorderSide(
+          color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+          width: 1,
+        ),
       ),
       child: InkWell(
         onTap: () => _addToCart(productMap),
@@ -1300,7 +1322,7 @@ class _POSScreenState extends State<POSScreen> {
                       height: 100,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
+                        color: isDark ? Colors.grey[800] : Colors.grey[100],
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: imagePath != null && imagePath.isNotEmpty
@@ -1379,7 +1401,9 @@ class _POSScreenState extends State<POSScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: isDark
+                      ? Colors.green.shade900.withValues(alpha: 0.3)
+                      : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
@@ -1389,7 +1413,7 @@ class _POSScreenState extends State<POSScreen> {
                       child: Text(
                         priceDisplay,
                         style: TextStyle(
-                          color: Colors.green.shade700,
+                          color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -1399,7 +1423,7 @@ class _POSScreenState extends State<POSScreen> {
                     Icon(
                       Icons.add_shopping_cart,
                       size: 16,
-                      color: Colors.green.shade700,
+                      color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                     ),
                   ],
                 ),
@@ -1815,19 +1839,24 @@ class _POSScreenState extends State<POSScreen> {
   Widget _buildCartItem(_CartItem item) {
     final cartKey = '${item.productId}_${item.lotId}';
     final lineTotal = item.quantity * item.unitPrice;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
+        side: BorderSide(
+          color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+        ),
       ),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
-            colors: [Colors.white, Colors.grey.shade50],
+            colors: Theme.of(context).brightness == Brightness.dark
+                ? [const Color(0xFF1E293B), const Color(0xFF334155)]
+                : [Colors.white, Colors.grey.shade50],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -1849,7 +1878,9 @@ class _POSScreenState extends State<POSScreen> {
                       margin: const EdgeInsets.only(right: 12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(
+                          color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
+                        ),
                         image: DecorationImage(
                           image: FileImage(File(item.productImage!)),
                           fit: BoxFit.cover,
@@ -1863,9 +1894,10 @@ class _POSScreenState extends State<POSScreen> {
                       children: [
                         Text(
                           item.productName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
+                            color: isDark ? Colors.white : Colors.black,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -1877,7 +1909,9 @@ class _POSScreenState extends State<POSScreen> {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
+                            color: isDark
+                                ? Colors.blue.shade900.withValues(alpha: 0.3)
+                                : Colors.blue.shade100,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -1886,14 +1920,14 @@ class _POSScreenState extends State<POSScreen> {
                               Icon(
                                 Icons.tag,
                                 size: 12,
-                                color: Colors.blue.shade800,
+                                color: isDark ? Colors.blue.shade300 : Colors.blue.shade800,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 'Lot #${item.lotNumber}',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.blue.shade800,
+                                  color: isDark ? Colors.blue.shade300 : Colors.blue.shade800,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1907,12 +1941,14 @@ class _POSScreenState extends State<POSScreen> {
                   IconButton(
                     icon: Icon(
                       Icons.delete_outline,
-                      color: Colors.red.shade400,
+                      color: isDark ? Colors.red.shade300 : Colors.red.shade400,
                     ),
                     onPressed: () => _removeFromCart(cartKey),
                     tooltip: 'Remove item',
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.red.shade50,
+                      backgroundColor: isDark
+                          ? Colors.red.shade900.withValues(alpha: 0.3)
+                          : Colors.red.shade50,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1930,11 +1966,13 @@ class _POSScreenState extends State<POSScreen> {
                   Container(
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: Colors.blue.shade200,
+                        color: isDark ? Colors.blue.shade700 : Colors.blue.shade200,
                         width: 1.5,
                       ),
                       borderRadius: BorderRadius.circular(10),
-                      color: Colors.blue.shade50,
+                      color: isDark
+                          ? Colors.blue.shade900.withValues(alpha: 0.3)
+                          : Colors.blue.shade50,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1950,7 +1988,7 @@ class _POSScreenState extends State<POSScreen> {
                           },
                           padding: const EdgeInsets.all(8),
                           constraints: const BoxConstraints(),
-                          color: Colors.blue.shade700,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1960,9 +1998,10 @@ class _POSScreenState extends State<POSScreen> {
                               Text(
                                 item.quantity.toStringAsFixed(2),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
+                                  color: isDark ? Colors.white : Colors.black,
                                 ),
                               ),
                               Text(
@@ -1970,7 +2009,7 @@ class _POSScreenState extends State<POSScreen> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.grey.shade600,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                 ),
                               ),
                             ],
@@ -1987,7 +2026,7 @@ class _POSScreenState extends State<POSScreen> {
                           },
                           padding: const EdgeInsets.all(8),
                           constraints: const BoxConstraints(),
-                          color: Colors.blue.shade700,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                         ),
                       ],
                     ),
@@ -2000,9 +2039,13 @@ class _POSScreenState extends State<POSScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: isDark
+                            ? Colors.green.shade900.withValues(alpha: 0.3)
+                            : Colors.green.shade50,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.shade200),
+                        border: Border.all(
+                          color: isDark ? Colors.green.shade700 : Colors.green.shade200,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2012,13 +2055,13 @@ class _POSScreenState extends State<POSScreen> {
                               Icon(
                                 Icons.sell,
                                 size: 14,
-                                color: Colors.green.shade700,
+                                color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 '$_currencySymbol${item.unitPrice.toStringAsFixed(2)}',
                                 style: TextStyle(
-                                  color: Colors.green.shade700,
+                                  color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -2026,7 +2069,7 @@ class _POSScreenState extends State<POSScreen> {
                               Text(
                                 ' / ${item.unit}',
                                 style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                   fontSize: 11,
                                 ),
                               ),
@@ -2038,7 +2081,7 @@ class _POSScreenState extends State<POSScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
-                              color: Colors.green.shade800,
+                              color: isDark ? Colors.green.shade200 : Colors.green.shade800,
                             ),
                           ),
                         ],
@@ -2091,16 +2134,23 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   Widget _buildCustomerSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.blue.shade50, Colors.white],
+          colors: isDark
+              ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+              : [Colors.blue.shade50, Colors.white],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border(
-          bottom: BorderSide(color: Colors.grey.shade200, width: 2),
+          bottom: BorderSide(
+            color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+            width: 2,
+          ),
         ),
       ),
       child: Column(
@@ -2114,19 +2164,25 @@ class _POSScreenState extends State<POSScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
+                      color: isDark
+                          ? Colors.blue.shade900.withValues(alpha: 0.3)
+                          : Colors.blue.shade100,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       Icons.person_outline,
-                      color: Colors.blue.shade700,
+                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                       size: 22,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
+                  Text(
                     'Customer',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
                   ),
                 ],
               ),
@@ -2448,9 +2504,11 @@ class _POSScreenState extends State<POSScreen> {
     final tax = _calculateTax();
     final total = _calculateTotal();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -2466,7 +2524,9 @@ class _POSScreenState extends State<POSScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.grey.shade50, Colors.white],
+                colors: isDark
+                    ? [const Color(0xFF334155), const Color(0xFF1E293B)]
+                    : [Colors.grey.shade50, Colors.white],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -2543,15 +2603,16 @@ class _POSScreenState extends State<POSScreen> {
                   children: [
                     Icon(
                       Icons.discount,
-                      color: Colors.orange.shade700,
+                      color: isDark ? Colors.orange.shade300 : Colors.orange.shade700,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Discount',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black,
                       ),
                     ),
                   ],
@@ -2662,12 +2723,17 @@ class _POSScreenState extends State<POSScreen> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.green.shade50, Colors.green.shade100],
+                      colors: isDark
+                          ? [Colors.green.shade900.withValues(alpha: 0.4), Colors.green.shade800.withValues(alpha: 0.4)]
+                          : [Colors.green.shade50, Colors.green.shade100],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade300, width: 2),
+                    border: Border.all(
+                      color: isDark ? Colors.green.shade700 : Colors.green.shade300,
+                      width: 2,
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2677,7 +2743,7 @@ class _POSScreenState extends State<POSScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.green.shade600,
+                              color: isDark ? Colors.green.shade700 : Colors.green.shade600,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
@@ -2687,11 +2753,12 @@ class _POSScreenState extends State<POSScreen> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Text(
+                          Text(
                             'Grand Total',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
+                              color: isDark ? Colors.white : Colors.black,
                             ),
                           ),
                         ],
@@ -2701,7 +2768,7 @@ class _POSScreenState extends State<POSScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 24,
-                          color: Colors.green.shade800,
+                          color: isDark ? Colors.green.shade200 : Colors.green.shade800,
                         ),
                       ),
                     ],

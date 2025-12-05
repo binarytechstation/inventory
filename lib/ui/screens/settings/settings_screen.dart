@@ -9,6 +9,7 @@ import '../../../services/auth/auth_service.dart';
 import '../../../services/backup/backup_service.dart';
 import '../../../data/database/database_helper.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../user/change_password_screen.dart';
 import 'profile_edit_screen.dart';
 import 'business_info_screen.dart';
@@ -36,7 +37,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.settings, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Settings'),
+          ],
+        ),
       ),
       body: ListView(
         children: [
@@ -124,6 +138,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Application Settings
           _buildSectionTitle('Application Settings'),
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: SwitchListTile(
+                  secondary: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: themeProvider.isDarkMode
+                          ? Colors.indigo.withValues(alpha: 0.2)
+                          : Colors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      themeProvider.isDarkMode ? Icons.dark_mode : Icons.light_mode,
+                      color: themeProvider.isDarkMode ? Colors.indigo : Colors.blue,
+                    ),
+                  ),
+                  title: const Text(
+                    'Night Mode',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    themeProvider.isDarkMode ? 'Dark theme enabled' : 'Light theme enabled',
+                  ),
+                  value: themeProvider.isDarkMode,
+                  onChanged: (value) {
+                    themeProvider.toggleTheme();
+                  },
+                ),
+              );
+            },
+          ),
           _buildSettingsTile(
             icon: Icons.business,
             title: 'Business Information',

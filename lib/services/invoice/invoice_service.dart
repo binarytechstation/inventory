@@ -676,12 +676,12 @@ class InvoiceService {
     // Signature and stamp settings
     final showSignature = (footerSettings?['show_signature'] == 1 ||
                            footerSettings?['show_signature'] == true);
-    final signaturePath = footerSettings?['signature_path'] as String?;
+    final signaturePath = footerSettings?['signature_image_path'] as String?;
     final signatureLabel = footerSettings?['signature_label'] as String? ?? 'Authorized Signature';
 
     final showStamp = (footerSettings?['show_stamp'] == 1 ||
                        footerSettings?['show_stamp'] == true);
-    final stampPath = footerSettings?['stamp_path'] as String?;
+    final stampPath = footerSettings?['stamp_image_path'] as String?;
 
     // Load signature image if available
     pw.ImageProvider? signatureImage;

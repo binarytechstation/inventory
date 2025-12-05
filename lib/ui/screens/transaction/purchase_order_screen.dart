@@ -241,10 +241,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.green.shade100,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.green.shade900.withValues(alpha: 0.3)
+                    : Colors.green.shade100,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.business, color: Colors.green.shade700),
+              child: Icon(
+                Icons.business,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.green.shade300
+                    : Colors.green.shade700,
+              ),
             ),
             const SizedBox(width: 12),
             const Text('Add New Supplier'),
@@ -661,19 +668,33 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.blue.shade900.withValues(alpha: 0.3)
+                                  : Colors.blue.shade50,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.blue.shade200),
+                              border: Border.all(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.blue.shade700
+                                    : Colors.blue.shade200,
+                              ),
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.label, color: Colors.blue.shade700, size: 20),
+                                Icon(
+                                  Icons.label,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.blue.shade300
+                                      : Colors.blue.shade700,
+                                  size: 20,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     'Generated Lot: $_lotName',
                                     style: TextStyle(
-                                      color: Colors.blue.shade900,
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? Colors.blue.shade200
+                                          : Colors.blue.shade900,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -771,7 +792,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E293B)
+                    : Colors.grey.shade100,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.1),

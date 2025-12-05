@@ -10,7 +10,6 @@ import '../product/products_screen.dart';
 import '../transaction/transactions_screen.dart';
 import '../user/users_screen.dart';
 import '../settings/settings_screen.dart';
-import '../held_bills/held_bills_screen.dart';
 import '../reports/reports_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../../services/product/product_service.dart';
@@ -49,7 +48,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Suppliers',
     'Customers',
     'Transactions',
-    'Held Bills',
     'Reports',
     'Users',
     'Settings',
@@ -61,7 +59,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Icons.local_shipping,
     Icons.people,
     Icons.receipt_long,
-    Icons.pause_circle_outline,
     Icons.analytics,
     Icons.group,
     Icons.settings,
@@ -78,10 +75,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (user.hasPermission('view_suppliers')) allowed.add(2); // Suppliers
     if (user.hasPermission('view_customers')) allowed.add(3); // Customers
     if (user.hasPermission('view_transactions')) allowed.add(4); // Transactions
-    if (user.hasPermission('create_sale')) allowed.add(5); // Held Bills (for cashiers)
-    if (user.hasPermission('view_reports')) allowed.add(6); // Reports
-    if (user.isAdmin) allowed.add(7); // Users (admin only)
-    if (user.isAdmin) allowed.add(8); // Settings (admin only)
+    if (user.hasPermission('view_reports')) allowed.add(5); // Reports
+    if (user.isAdmin) allowed.add(6); // Users (admin only)
+    if (user.isAdmin) allowed.add(7); // Settings (admin only)
 
     return allowed;
   }
@@ -146,7 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
 
       // PERFORMANCE: Chart disabled, skip chart data loading
-      // final salesChartData = await _getLast7DaysSales();
+      final salesChartData = await _getLast7DaysSales();
 
       if (mounted) {
         setState(() {
@@ -155,7 +151,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _lowStockCount = lowStock.length;
           _totalProducts = productCount;
           _recentTransactions = recentTransactions.take(5).toList();
-          // _salesChartData = salesChartData; // Chart disabled
+          _salesChartData = salesChartData;
           _isLoadingKPIs = false;
         });
       }
@@ -333,12 +329,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 4:
         return const TransactionsScreen();
       case 5:
-        return const HeldBillsScreen();
-      case 6:
         return const ReportsScreen();
-      case 7:
+      case 6:
         return const UsersScreen();
-      case 8:
+      case 7:
         return const SettingsScreen();
       default:
         return _buildDashboardView();
@@ -464,41 +458,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
+            Row(
               children: [
-                _buildActionButton(
-                  'New Sale',
-                  Icons.point_of_sale,
-                  Colors.green,
-                  () {
-                    setState(() => _selectedIndex = 4);
-                  },
+                Expanded(
+                  child: _buildActionButton(
+                    'Transactions',
+                    Icons.receipt_long,
+                    Colors.blue,
+                    () {
+                      setState(() => _selectedIndex = 4);
+                    },
+                  ),
                 ),
-                _buildActionButton(
-                  'New Purchase',
-                  Icons.add_shopping_cart,
-                  Colors.blue,
-                  () {
-                    setState(() => _selectedIndex = 4);
-                  },
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildActionButton(
+                    'Products',
+                    Icons.inventory_2,
+                    Colors.purple,
+                    () {
+                      setState(() => _selectedIndex = 1);
+                    },
+                  ),
                 ),
-                _buildActionButton(
-                  'Add Product',
-                  Icons.add_box,
-                  Colors.purple,
-                  () {
-                    setState(() => _selectedIndex = 1);
-                  },
-                ),
-                _buildActionButton(
-                  'View Reports',
-                  Icons.analytics,
-                  Colors.orange,
-                  () {
-                    setState(() => _selectedIndex = 6);
-                  },
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildActionButton(
+                    'Reports',
+                    Icons.analytics,
+                    Colors.orange,
+                    () {
+                      setState(() => _selectedIndex = 5);
+                    },
+                  ),
                 ),
               ],
             ),
@@ -523,15 +515,110 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 24),
-                          // PERFORMANCE: Chart disabled - fl_chart causes severe lag
-                          const SizedBox(
+                          SizedBox(
                             height: 200,
-                            child: Center(
-                              child: Text(
-                                'Sales chart temporarily disabled for performance',
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
+                            child: _salesChartData.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      'No sales data available',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  )
+                                : LineChart(
+                                    LineChartData(
+                                      gridData: FlGridData(
+                                        show: true,
+                                        drawVerticalLine: false,
+                                        horizontalInterval: 1,
+                                        getDrawingHorizontalLine: (value) {
+                                          return FlLine(
+                                            color: Colors.grey.withValues(alpha: 0.2),
+                                            strokeWidth: 1,
+                                          );
+                                        },
+                                      ),
+                                      titlesData: FlTitlesData(
+                                        show: true,
+                                        rightTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                        topTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                        bottomTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            reservedSize: 30,
+                                            interval: 1,
+                                            getTitlesWidget: (double value, TitleMeta meta) {
+                                              const style = TextStyle(
+                                                color: Colors.grey,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 10,
+                                              );
+                                              final now = DateTime.now();
+                                              final date = now.subtract(Duration(days: 6 - value.toInt()));
+                                              return SideTitleWidget(
+                                                axisSide: meta.axisSide,
+                                                space: 8,
+                                                child: Text('${date.day}/${date.month}', style: style),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        leftTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            interval: null,
+                                            reservedSize: 42,
+                                            getTitlesWidget: (double value, TitleMeta meta) {
+                                              return Text(
+                                                value.toInt().toString(),
+                                                style: const TextStyle(
+                                                  color: Colors.grey,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      borderData: FlBorderData(
+                                        show: true,
+                                        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                                      ),
+                                      minX: 0,
+                                      maxX: 6,
+                                      minY: 0,
+                                      maxY: _salesChartData.map((e) => e.y).reduce((a, b) => a > b ? a : b) * 1.2,
+                                      lineBarsData: [
+                                        LineChartBarData(
+                                          spots: _salesChartData,
+                                          isCurved: true,
+                                          curveSmoothness: 0.3,
+                                          color: Colors.blue,
+                                          barWidth: 3,
+                                          isStrokeCapRound: true,
+                                          dotData: FlDotData(
+                                            show: true,
+                                            getDotPainter: (spot, percent, barData, index) {
+                                              return FlDotCirclePainter(
+                                                radius: 4,
+                                                color: Colors.blue,
+                                                strokeWidth: 2,
+                                                strokeColor: Colors.white,
+                                              );
+                                            },
+                                          ),
+                                          belowBarData: BarAreaData(
+                                            show: true,
+                                            color: Colors.blue.withValues(alpha: 0.1),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                           ),
                         ],
                       ),
@@ -626,9 +713,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildKPICard(String title, String value, IconData icon, Color color, {String? subtitle}) {
-    return Card(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+            ? [const Color(0xFF1E293B), color.withValues(alpha: 0.15)]
+            : [Colors.white, color.withValues(alpha: 0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+            ? color.withValues(alpha: 0.3)
+            : color.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -636,45 +748,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(icon, color: color, size: 32),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: [color.withValues(alpha: 0.8), color],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  child: Icon(Icons.trending_up, color: color, size: 16),
+                  child: Icon(icon, color: Colors.white, size: 28),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.trending_up, color: Colors.green, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Live',
+                        style: TextStyle(
+                          color: isDark ? Colors.green[400] : Colors.green[700],
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 16),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 24,
+                  style: TextStyle(
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
+                    color: color,
+                    letterSpacing: -1,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
                   title,
                   style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
+                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (subtitle != null)
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 10,
+                      color: isDark ? Colors.grey[400] : Colors.grey[500],
+                      fontSize: 11,
                     ),
                   ),
+                ],
               ],
             ),
           ],
@@ -684,14 +835,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color, color.withValues(alpha: 0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 24),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

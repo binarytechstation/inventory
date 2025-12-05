@@ -139,7 +139,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Customers'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.people, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Customers'),
+          ],
+        ),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort),

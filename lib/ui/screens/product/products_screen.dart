@@ -1476,13 +1476,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Row(
                           children: [
-                            Icon(Icons.category, size: 16, color: Colors.grey.shade700),
+                            Icon(
+                              Icons.category,
+                              size: 16,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.grey[400]
+                                  : Colors.grey.shade700,
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               category,
                               style: TextStyle(
                                 fontSize: 15,
-                                color: Colors.grey.shade800,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.grey.shade800,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -1681,8 +1689,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Products'),
-        elevation: 2,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.inventory_2, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Products'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -1697,7 +1717,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF1E293B)
+                  : Colors.white,
               boxShadow: [
                 BoxShadow(
                   color: Colors.grey.withValues(alpha: 0.1),
@@ -1715,12 +1737,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     Expanded(
                       child: TextField(
                         controller: _searchController,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Search products by name, SKU, or barcode...',
-                          prefixIcon: const Icon(Icons.search),
+                          hintStyle: TextStyle(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey[400]
+                                : Colors.grey[600],
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey[400]
+                                : Colors.grey[700],
+                          ),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear),
+                                  icon: Icon(
+                                    Icons.clear,
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.grey[400]
+                                        : Colors.grey[700],
+                                  ),
                                   onPressed: () {
                                     _searchController.clear();
                                     _filterProducts('');
@@ -1731,7 +1773,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           filled: true,
-                          fillColor: Colors.grey.shade50,
+                          fillColor: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF334155)
+                              : Colors.grey.shade50,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                         onChanged: _filterProducts,

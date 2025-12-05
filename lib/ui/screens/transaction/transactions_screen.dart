@@ -57,9 +57,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Transactions'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.receipt_long, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Transactions'),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Colors.white,
+          indicatorWeight: 3,
           tabs: const [
             Tab(text: 'Buy / Purchase', icon: Icon(Icons.shopping_cart)),
             Tab(text: 'Sell / Sales', icon: Icon(Icons.point_of_sale)),
@@ -286,12 +301,32 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
               const SizedBox(height: 12),
               TextField(
                 controller: _searchController,
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Search by invoice number, party name, payment mode...',
-                  prefixIcon: const Icon(Icons.search),
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[400]
+                        : Colors.grey[600],
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[400]
+                        : Colors.grey[700],
+                  ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear),
+                          icon: Icon(
+                            Icons.clear,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey[400]
+                                : Colors.grey[700],
+                          ),
                           onPressed: () {
                             _searchController.clear();
                             _filterTransactions('');
@@ -302,7 +337,9 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[100],
+                  fillColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF334155)
+                      : Colors.grey[100],
                 ),
                 onChanged: _filterTransactions,
               ),
