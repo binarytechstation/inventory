@@ -498,6 +498,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         ],
                                       ),
                                     ),
+                                    const SizedBox(height: 16),
+                                    // Delete lot button
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton.icon(
+                                        onPressed: () {
+                                          Navigator.pop(context); // Close details dialog first
+                                          _deleteLot(lot['product_id'] as int, lot['lot_id'] as int, serialNumber);
+                                        },
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text('Delete This Lot'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.red.shade700,
+                                          side: BorderSide(color: Colors.red.shade300, width: 1.5),
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -852,81 +873,88 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
       showDialog(
         context: context,
-        builder: (context) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Container(
-            width: 700,
-            constraints: const BoxConstraints(maxHeight: 800),
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.orange.shade700, Colors.orange.shade500],
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.edit_note, color: Colors.white, size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Edit Lot-wise Details',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              productName.toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-                // Lots list
-                Expanded(
-                  child: ListView.builder(
+        builder: (context) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            child: Container(
+              width: 700,
+              constraints: const BoxConstraints(maxHeight: 800),
+              child: Column(
+                children: [
+                  // Header
+                  Container(
                     padding: const EdgeInsets.all(20),
-                    itemCount: lots.length,
-                    itemBuilder: (context, index) {
-                      final lot = lots[index];
-                      return _buildEditableLotCard(lot, index + 1);
-                    },
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.orange.shade700, Colors.orange.shade500],
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.edit_note, color: Colors.white, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Edit Lot-wise Details',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                productName.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  // Lots list
+                  Expanded(
+                    child: Container(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.grey[50],
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(20),
+                        itemCount: lots.length,
+                        itemBuilder: (context, index) {
+                          final lot = lots[index];
+                          return _buildEditableLotCard(lot, index + 1);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       );
     } catch (e) {
       if (mounted) {
@@ -938,326 +966,446 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Widget _buildEditableLotCard(Map<String, dynamic> lot, int serialNumber) {
-    final lotId = lot['lot_id'] as int;
-    final productId = lot['product_id'] as int;
-    final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
-    final sellingPrice = (lot['selling_price'] as num?)?.toDouble() ?? 0.0;
-    final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
-    final receivedDate = lot['received_date'] as String?;
-    final notes = lot['lot_description'] as String? ?? '';
-    final unit = lot['unit'] as String? ?? 'piece';
-    final productName = lot['product_name'] as String? ?? '';
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final lotId = lot['lot_id'] as int;
+        final productId = lot['product_id'] as int;
+        final unitPrice = (lot['unit_price'] as num?)?.toDouble() ?? 0.0;
+        final sellingPrice = (lot['selling_price'] as num?)?.toDouble() ?? 0.0;
+        final stock = (lot['current_stock'] as num?)?.toDouble() ?? 0.0;
+        final receivedDate = lot['received_date'] as String?;
+        final notes = lot['lot_description'] as String? ?? '';
+        final unit = lot['unit'] as String? ?? 'piece';
+        final productName = lot['product_name'] as String? ?? '';
 
-    final lotNameController = TextEditingController(text: productName);
-    final sellingPriceController = TextEditingController(text: sellingPrice.toStringAsFixed(2));
-    final notesController = TextEditingController(text: notes);
+        final lotNameController = TextEditingController(text: productName);
+        final sellingPriceController = TextEditingController(text: sellingPrice.toStringAsFixed(2));
+        final notesController = TextEditingController(text: notes);
 
-    // Format date
-    String formattedDate = '';
-    if (receivedDate != null) {
-      formattedDate = DateTime.tryParse(receivedDate)
-              ?.toLocal()
-              .toString()
-              .split(' ')[0] ??
-          receivedDate;
-    }
+        // Format date
+        String formattedDate = '';
+        if (receivedDate != null) {
+          formattedDate = DateTime.tryParse(receivedDate)
+                  ?.toLocal()
+                  .toString()
+                  .split(' ')[0] ??
+              receivedDate;
+        }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Lot header with serial number
-            Row(
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          elevation: 3,
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.orange.shade100, Colors.orange.shade50],
+                // Lot header with serial number and delete button
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isDark
+                              ? [Colors.orange.shade800.withValues(alpha: 0.5), Colors.orange.shade900.withValues(alpha: 0.3)]
+                              : [Colors.orange.shade100, Colors.orange.shade50],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark ? Colors.orange.shade700 : Colors.orange.shade300,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.inventory_2, size: 16, color: isDark ? Colors.orange.shade300 : Colors.orange.shade700),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Lot #$serialNumber',
+                            style: TextStyle(
+                              color: isDark ? Colors.orange.shade200 : Colors.orange.shade900,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.orange.shade300),
+                    const SizedBox(width: 12),
+                    // Always show lot name (N/A if empty)
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: notes.isNotEmpty
+                              ? (isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50)
+                              : (isDark ? Colors.grey.shade800 : Colors.grey.shade50),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: notes.isNotEmpty
+                                ? (isDark ? Colors.green.shade700 : Colors.green.shade200)
+                                : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.label,
+                              size: 14,
+                              color: notes.isNotEmpty
+                                  ? (isDark ? Colors.green.shade300 : Colors.green.shade700)
+                                  : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                notes.isNotEmpty ? notes : 'N/A',
+                                style: TextStyle(
+                                  color: notes.isNotEmpty
+                                      ? (isDark ? Colors.green.shade200 : Colors.green.shade900)
+                                      : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  fontSize: 13,
+                                  fontWeight: notes.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Delete lot button
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: isDark ? Colors.red.shade300 : Colors.red.shade700),
+                      tooltip: 'Delete this lot',
+                      onPressed: () => _deleteLot(productId, lotId, serialNumber),
+                    ),
+                  ],
+                ),
+                // Show date
+                if (formattedDate.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_today, size: 14, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                            const SizedBox(width: 6),
+                            Text(
+                              formattedDate,
+                              style: TextStyle(
+                                color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+
+                // Lot Name (editable)
+                TextField(
+                  controller: lotNameController,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  decoration: InputDecoration(
+                    labelText: 'Lot Name',
+                    labelStyle: TextStyle(color: isDark ? Colors.grey[400] : null),
+                    prefixIcon: Icon(Icons.label, color: isDark ? Colors.grey[400] : null),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[400]!),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Read-only and editable fields in a grid
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: TextEditingController(text: unitPrice.toStringAsFixed(2)),
+                        style: TextStyle(color: isDark ? Colors.grey[500] : Colors.black54),
+                        decoration: InputDecoration(
+                          labelText: 'Buying Price ($_currencySymbol)',
+                          labelStyle: TextStyle(color: isDark ? Colors.grey[500] : null),
+                          prefixIcon: Icon(Icons.shopping_cart, color: isDark ? Colors.grey[500] : null),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey.shade900.withValues(alpha: 0.3) : Colors.grey.shade100,
+                        ),
+                        enabled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: sellingPriceController,
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                        decoration: InputDecoration(
+                          labelText: 'Selling Price ($_currencySymbol)',
+                          labelStyle: TextStyle(color: isDark ? Colors.grey[400] : null),
+                          prefixIcon: Icon(Icons.sell, color: isDark ? Colors.grey[400] : null),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[400]!),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: TextEditingController(text: stock.toStringAsFixed(2)),
+                        style: TextStyle(color: isDark ? Colors.grey[500] : Colors.black54),
+                        decoration: InputDecoration(
+                          labelText: 'Stock Quantity ($unit)',
+                          labelStyle: TextStyle(color: isDark ? Colors.grey[500] : null),
+                          prefixIcon: Icon(Icons.inventory, color: isDark ? Colors.grey[500] : null),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey.shade900.withValues(alpha: 0.3) : Colors.grey.shade100,
+                        ),
+                        enabled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: TextEditingController(
+                          text: receivedDate != null
+                              ? DateTime.tryParse(receivedDate)?.toLocal().toString().split(' ')[0] ?? receivedDate
+                              : '',
+                        ),
+                        style: TextStyle(color: isDark ? Colors.grey[500] : Colors.black54),
+                        decoration: InputDecoration(
+                          labelText: 'Received Date',
+                          labelStyle: TextStyle(color: isDark ? Colors.grey[500] : null),
+                          prefixIcon: Icon(Icons.calendar_today, color: isDark ? Colors.grey[500] : null),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey.shade900.withValues(alpha: 0.3) : Colors.grey.shade100,
+                        ),
+                        enabled: false,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Lot Description (editable)
+                TextField(
+                  controller: notesController,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  decoration: InputDecoration(
+                    labelText: 'Lot Description',
+                    labelStyle: TextStyle(color: isDark ? Colors.grey[400] : null),
+                    prefixIcon: Icon(Icons.note, color: isDark ? Colors.grey[400] : null),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[400]!),
+                    ),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+
+                // Info message
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: isDark ? Colors.blue.shade700 : Colors.blue.shade200),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory_2, size: 16, color: Colors.orange.shade700),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Lot #$serialNumber',
-                        style: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                      Icon(Icons.info_outline, size: 18, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'You can edit: Lot Name, Selling Price, and Description. Buying price, stock, and date are read-only.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Always show lot name (N/A if empty)
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: notes.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: notes.isNotEmpty ? Colors.green.shade200 : Colors.grey.shade300,
+                const SizedBox(height: 16),
+
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        // Parse and validate selling price
+                        final newSellingPrice = double.tryParse(sellingPriceController.text.trim());
+                        if (newSellingPrice == null || newSellingPrice < 0) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter a valid selling price'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
+                        await _productService.updateLotData(
+                          productId: productId,
+                          lotId: lotId,
+                          lotName: lotNameController.text.trim().isEmpty ? null : lotNameController.text.trim(),
+                          notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                          sellingPrice: newSellingPrice,
+                        );
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Lot #$lotId updated successfully')),
+                          );
+                          Navigator.pop(context);
+                          _loadProducts();
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error updating lot: $e')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save Changes'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.label,
-                          size: 14,
-                          color: notes.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            notes.isNotEmpty ? notes : 'N/A',
-                            style: TextStyle(
-                              color: notes.isNotEmpty ? Colors.green.shade900 : Colors.grey.shade600,
-                              fontSize: 13,
-                              fontWeight: notes.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
               ],
             ),
-            // Show date
-            if (formattedDate.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade600),
-                        const SizedBox(width: 6),
-                        Text(
-                          formattedDate,
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteLot(int productId, int lotId, int serialNumber) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'Delete Lot #$serialNumber',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
             ],
-            const SizedBox(height: 16),
-
-            // Lot Name (editable)
-            TextField(
-              controller: lotNameController,
-              decoration: InputDecoration(
-                labelText: 'Lot Name',
-                prefixIcon: const Icon(Icons.label),
-                border: OutlineInputBorder(
+          ),
+          content: Text(
+            'Are you sure you want to delete Lot #$serialNumber?\n\n'
+            'This will deactivate only this specific lot. '
+            'The lot will no longer appear in the product list, '
+            'but historical transaction data will be preserved.',
+            style: TextStyle(color: isDark ? Colors.grey[300] : Colors.black87),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.delete),
+              label: const Text('Delete Lot'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Read-only and editable fields in a grid
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: TextEditingController(text: unitPrice.toStringAsFixed(2)),
-                    decoration: InputDecoration(
-                      labelText: 'Buying Price ($_currencySymbol)',
-                      prefixIcon: const Icon(Icons.shopping_cart),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                    ),
-                    enabled: false,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: sellingPriceController,
-                    decoration: InputDecoration(
-                      labelText: 'Selling Price ($_currencySymbol)',
-                      prefixIcon: const Icon(Icons.sell),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: TextEditingController(text: stock.toStringAsFixed(2)),
-                    decoration: InputDecoration(
-                      labelText: 'Stock Quantity ($unit)',
-                      prefixIcon: const Icon(Icons.inventory),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                    ),
-                    enabled: false,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: TextEditingController(
-                      text: receivedDate != null
-                          ? DateTime.tryParse(receivedDate)?.toLocal().toString().split(' ')[0] ?? receivedDate
-                          : '',
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Received Date',
-                      prefixIcon: const Icon(Icons.calendar_today),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                    ),
-                    enabled: false,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Lot Description (editable)
-            TextField(
-              controller: notesController,
-              decoration: InputDecoration(
-                labelText: 'Lot Description',
-                prefixIcon: const Icon(Icons.note),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-
-            // Info message
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 18, color: Colors.blue.shade700),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'You can edit: Lot Name, Selling Price, and Description. Buying price, stock, and date are read-only.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  try {
-                    // Parse and validate selling price
-                    final newSellingPrice = double.tryParse(sellingPriceController.text.trim());
-                    if (newSellingPrice == null || newSellingPrice < 0) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please enter a valid selling price'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                      return;
-                    }
-
-                    await _productService.updateLotData(
-                      productId: productId,
-                      lotId: lotId,
-                      lotName: lotNameController.text.trim().isEmpty ? null : lotNameController.text.trim(),
-                      notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-                      sellingPrice: newSellingPrice,
-                    );
-
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Lot #$lotId updated successfully')),
-                      );
-                      Navigator.pop(context);
-                      _loadProducts();
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error updating lot: $e')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.save),
-                label: const Text('Save Changes'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
               ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
+
+    if (confirm == true && mounted) {
+      try {
+        await _productService.deleteProduct(productId, lotId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lot #$serialNumber deleted successfully')),
+          );
+          Navigator.pop(context); // Close the edit dialog
+          _loadProducts();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting lot: $e')),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _deleteProduct(String productName) async {

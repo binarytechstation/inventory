@@ -22,7 +22,8 @@
       "Bash(for screen in suppliers customers transactions held_bills reports users settings)",
       "Bash(do file=/Users/jit/inventory/lib/ui/screens/$screen/$screen_screen.dart if [ -f $file ])",
       "Bash(then echo '=== $screen ===' grep -A 5 'void initState' $file)",
-      "Bash(hdiutil create:*)"
+      "Bash(hdiutil create:*)",
+      "Bash(printf:*)"
     ],
     "deny": [],
     "ask": []

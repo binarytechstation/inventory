@@ -723,6 +723,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // Helper: Date Range Picker
   Future<DateTimeRange?> _showDateRangePicker(BuildContext context, String title) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
     DateTime? startDate = DateTime(now.year, now.month, 1);
     DateTime? endDate = now;
@@ -734,6 +735,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           builder: (context, setState) {
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
               child: Container(
                 width: 500,
                 padding: const EdgeInsets.all(24),
@@ -752,18 +754,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             children: [
                               Text(
                                 'Select Date Range',
-                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 title,
-                                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: Icon(
+                            Icons.close,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                       ],
@@ -771,7 +783,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const Divider(height: 32),
 
                     // Quick Select Buttons
-                    const Text('Quick Select', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(
+                      'Quick Select',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
@@ -827,7 +846,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(height: 24),
 
                     // Custom Date Selection
-                    const Text('Custom Range', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(
+                      'Custom Range',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -911,38 +937,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildQuickDateChip(BuildContext context, String label, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ActionChip(
       label: Text(label),
       onPressed: onTap,
-      backgroundColor: Colors.grey[100],
-      labelStyle: const TextStyle(fontSize: 13),
+      backgroundColor: isDark ? const Color(0xFF334155) : Colors.grey[100],
+      labelStyle: TextStyle(
+        fontSize: 13,
+        color: isDark ? Colors.white : Colors.black,
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 
   Widget _buildDateButton(BuildContext context, String label, DateTime? date, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(
+            color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+          ),
           borderRadius: BorderRadius.circular(8),
+          color: isDark ? const Color(0xFF334155) : Colors.white,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               date != null
                   ? '${date.day}/${date.month}/${date.year}'
                   : 'Select date',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white : Colors.black,
+              ),
             ),
           ],
         ),
@@ -952,6 +993,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // Helper: Loading Dialog
   void _showLoadingDialog(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -959,11 +1001,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -981,11 +1023,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Generating Report',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
                 ),
               ),
               const SizedBox(height: 8),
@@ -993,7 +1036,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 'Please wait...',
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
               ),
             ],
@@ -1005,10 +1048,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // Helper: Generic Report Dialog
   void _showReportDialog(BuildContext context, String title, List<Widget> items) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
         child: Container(
           width: 600,
           constraints: const BoxConstraints(maxHeight: 700),
@@ -1084,8 +1129,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                  color: isDark ? const Color(0xFF0F172A) : Colors.grey[50],
+                  border: Border(
+                    top: BorderSide(
+                      color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
+                    ),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -1207,10 +1256,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     double totalValue,
     int lowStockCount,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Inventory Report'),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Text(
+          'Inventory Report',
+          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        ),
         content: SizedBox(
           width: 800,
           height: 600,
@@ -1221,16 +1275,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   Expanded(
                     child: Card(
-                      color: Colors.blue[50],
+                      color: isDark
+                          ? Colors.blue.shade900.withValues(alpha: 0.3)
+                          : Colors.blue[50],
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const Text('Total Products',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(
+                              'Total Products',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
                             const SizedBox(height: 8),
-                            Text(totalProducts.toString(),
-                                style: const TextStyle(fontSize: 24)),
+                            Text(
+                              totalProducts.toString(),
+                              style: TextStyle(
+                                fontSize: 24,
+                                color: isDark ? Colors.blue.shade200 : Colors.black,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1238,16 +1304,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   Expanded(
                     child: Card(
-                      color: Colors.green[50],
+                      color: isDark
+                          ? Colors.green.shade900.withValues(alpha: 0.3)
+                          : Colors.green[50],
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const Text('Total Value',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(
+                              'Total Value',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
                             const SizedBox(height: 8),
-                            Text('$_currencySymbol${totalValue.toStringAsFixed(2)}',
-                                style: const TextStyle(fontSize: 24)),
+                            Text(
+                              '$_currencySymbol${totalValue.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 24,
+                                color: isDark ? Colors.green.shade200 : Colors.black,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1255,16 +1333,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   Expanded(
                     child: Card(
-                      color: Colors.orange[50],
+                      color: isDark
+                          ? Colors.orange.shade900.withValues(alpha: 0.3)
+                          : Colors.orange[50],
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const Text('Low Stock',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(
+                              'Low Stock',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
                             const SizedBox(height: 8),
-                            Text(lowStockCount.toString(),
-                                style: const TextStyle(fontSize: 24)),
+                            Text(
+                              lowStockCount.toString(),
+                              style: TextStyle(
+                                fontSize: 24,
+                                color: isDark ? Colors.orange.shade200 : Colors.black,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1610,67 +1700,86 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // Helper: Build Report Item
   Widget _buildReportItem(String label, String value, {bool isHighlighted = false, Color? color}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isHighlighted ? Colors.blue.withValues(alpha: 0.08) : Colors.grey.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isHighlighted ? Colors.blue.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.1),
-          width: isHighlighted ? 2 : 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                if (isHighlighted)
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isHighlighted
+                ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.withValues(alpha: 0.08))
+                : (isDark ? const Color(0xFF334155) : Colors.grey.withValues(alpha: 0.03)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isHighlighted
+                  ? (isDark ? Colors.blue.shade700 : Colors.blue.withValues(alpha: 0.3))
+                  : (isDark ? Colors.grey[700]! : Colors.grey.withValues(alpha: 0.1)),
+              width: isHighlighted ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    if (isHighlighted)
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.blue.shade800.withValues(alpha: 0.3)
+                              : Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.star,
+                          size: 16,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue,
+                        ),
+                      ),
+                    if (isHighlighted) const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontWeight: isHighlighted ? FontWeight.w600 : FontWeight.w500,
+                          fontSize: isHighlighted ? 15 : 14,
+                          color: isDark ? Colors.grey[300] : Colors.grey[700],
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.star, size: 16, color: Colors.blue),
-                  ),
-                if (isHighlighted) const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontWeight: isHighlighted ? FontWeight.w600 : FontWeight.w500,
-                      fontSize: isHighlighted ? 15 : 14,
-                      color: Colors.grey[700],
-                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isHighlighted ? 16 : 12,
+                  vertical: isHighlighted ? 8 : 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isHighlighted
+                      ? (isDark ? Colors.blue.shade700 : Colors.blue)
+                      : (isDark ? const Color(0xFF475569) : Colors.grey[100]),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w600,
+                    fontSize: isHighlighted ? 16 : 14,
+                    color: isHighlighted
+                        ? Colors.white
+                        : (color ?? (isDark ? Colors.white : Colors.grey[800])),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isHighlighted ? 16 : 12,
-              vertical: isHighlighted ? 8 : 6,
-            ),
-            decoration: BoxDecoration(
-              color: isHighlighted ? Colors.blue : Colors.grey[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w600,
-                fontSize: isHighlighted ? 16 : 14,
-                color: isHighlighted ? Colors.white : (color ?? Colors.grey[800]),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

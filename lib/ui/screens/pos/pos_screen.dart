@@ -507,7 +507,19 @@ class _POSScreenState extends State<POSScreen> {
                                       ),
                                       decoration: InputDecoration(
                                         labelText: 'Purchase Price',
-                                        border: const OutlineInputBorder(),
+                                        labelStyle: TextStyle(
+                                          color: isDark ? Colors.grey[400] : null,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                                          ),
+                                        ),
                                         contentPadding:
                                             const EdgeInsets.symmetric(
                                               horizontal: 12,
@@ -515,15 +527,18 @@ class _POSScreenState extends State<POSScreen> {
                                             ),
                                         prefixText: _currencySymbol,
                                         filled: true,
-                                        fillColor: Colors.grey.shade100,
-                                        prefixIcon: const Icon(
+                                        fillColor: isDark
+                                            ? const Color(0xFF334155)
+                                            : Colors.grey.shade100,
+                                        prefixIcon: Icon(
                                           Icons.shopping_cart,
                                           size: 20,
+                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
                                         ),
                                       ),
                                       enabled: false,
                                       style: TextStyle(
-                                        color: Colors.grey.shade700,
+                                        color: isDark ? Colors.white : Colors.grey.shade700,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -1477,21 +1492,26 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   Widget _buildCartAndCheckout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       children: [
         // Customer selection
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.grey[100],
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Customer',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
                   ),
                   ElevatedButton.icon(
                     onPressed: _showAddCustomerDialog,
@@ -1520,26 +1540,34 @@ class _POSScreenState extends State<POSScreen> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
+                    border: Border.all(
+                      color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                    ),
                     borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
+                    color: isDark ? const Color(0xFF334155) : Colors.white,
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.person, color: Colors.grey),
+                      Icon(
+                        Icons.person,
+                        color: isDark ? Colors.grey[400] : Colors.grey,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           _selectedCustomer?.name ?? 'Select customer',
                           style: TextStyle(
                             color: _selectedCustomer == null
-                                ? Colors.grey[600]
-                                : Colors.black,
+                                ? (isDark ? Colors.grey[400] : Colors.grey[600])
+                                : (isDark ? Colors.white : Colors.black),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
                     ],
                   ),
                 ),
@@ -2208,17 +2236,17 @@ class _POSScreenState extends State<POSScreen> {
           const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF334155) : Colors.white,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _selectedCustomer == null
-                    ? Colors.red.shade200
-                    : Colors.grey.shade300,
+                    ? (isDark ? Colors.red.shade700 : Colors.red.shade200)
+                    : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
                 width: _selectedCustomer == null ? 2 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -2227,6 +2255,8 @@ class _POSScreenState extends State<POSScreen> {
             child: DropdownButtonFormField<CustomerModel>(
               value: _selectedCustomer,
               decoration: InputDecoration(
+                filled: true,
+                fillColor: isDark ? const Color(0xFF334155) : Colors.white,
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -2235,13 +2265,16 @@ class _POSScreenState extends State<POSScreen> {
                 prefixIcon: Icon(
                   Icons.person,
                   color: _selectedCustomer == null
-                      ? Colors.red.shade400
-                      : Colors.blue.shade600,
+                      ? (isDark ? Colors.red.shade300 : Colors.red.shade400)
+                      : (isDark ? Colors.blue.shade300 : Colors.blue.shade600),
                 ),
                 hintText: 'Select a customer *',
-                hintStyle: TextStyle(color: Colors.grey.shade500),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                ),
               ),
               isExpanded: true,
+              dropdownColor: isDark ? const Color(0xFF334155) : Colors.white,
               items: _customers.map((customer) {
                 return DropdownMenuItem(
                   value: customer,
@@ -2250,13 +2283,15 @@ class _POSScreenState extends State<POSScreen> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
+                          color: isDark
+                              ? Colors.blue.shade900.withValues(alpha: 0.3)
+                              : Colors.blue.shade50,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           Icons.account_circle,
                           size: 20,
-                          color: Colors.blue.shade700,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -2267,9 +2302,10 @@ class _POSScreenState extends State<POSScreen> {
                           children: [
                             Text(
                               customer.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
+                                color: isDark ? Colors.white : Colors.black,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -2279,7 +2315,7 @@ class _POSScreenState extends State<POSScreen> {
                                 customer.phone!,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey.shade600,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                 ),
                               ),
                           ],
@@ -2294,7 +2330,10 @@ class _POSScreenState extends State<POSScreen> {
                   _selectedCustomer = value;
                 });
               },
-              icon: Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+              icon: Icon(
+                Icons.arrow_drop_down,
+                color: isDark ? Colors.grey.shade300 : Colors.grey.shade600,
+              ),
             ),
           ),
           if (_selectedCustomer != null)
@@ -2303,15 +2342,19 @@ class _POSScreenState extends State<POSScreen> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: isDark
+                      ? Colors.green.shade900.withValues(alpha: 0.3)
+                      : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(
+                    color: isDark ? Colors.green.shade700 : Colors.green.shade200,
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.check_circle,
-                      color: Colors.green.shade700,
+                      color: isDark ? Colors.green.shade300 : Colors.green.shade700,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -2320,7 +2363,7 @@ class _POSScreenState extends State<POSScreen> {
                         'Selected: ${_selectedCustomer!.name}',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.green.shade800,
+                          color: isDark ? Colors.green.shade200 : Colors.green.shade800,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -2330,7 +2373,7 @@ class _POSScreenState extends State<POSScreen> {
                         _selectedCustomer!.phone!,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade700,
+                          color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
                         ),
                       ),
                   ],

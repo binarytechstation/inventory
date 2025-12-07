@@ -113,6 +113,8 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Invoice Settings'),
@@ -127,10 +129,10 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withValues(alpha: 0.1),
+                  color: Colors.grey.withValues(alpha: isDark ? 0.3 : 0.1),
                   spreadRadius: 1,
                   blurRadius: 3,
                   offset: const Offset(0, 2),
@@ -142,13 +144,18 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
                 : Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[400]!),
+                      border: Border.all(
+                        color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                      ),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.grey[50],
+                      color: isDark ? const Color(0xFF334155) : Colors.grey[50],
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.receipt_long, color: Colors.grey),
+                        Icon(
+                          Icons.receipt_long,
+                          color: isDark ? Colors.grey[400] : Colors.grey,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Material(
@@ -183,18 +190,27 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
                                                   (type) => type['type_code'] == _selectedInvoiceType,
                                                 )['type_name'] as String,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(fontSize: 16),
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  color: isDark ? Colors.white : Colors.black,
+                                                ),
                                               ),
                                             ),
                                           ] else
-                                            const Text(
+                                            Text(
                                               'Select Invoice Type',
-                                              style: TextStyle(fontSize: 16),
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: isDark ? Colors.grey[400] : Colors.black,
+                                              ),
                                             ),
                                         ],
                                       ),
                                     ),
-                                    const Icon(Icons.arrow_drop_down, color: Colors.blue),
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      color: isDark ? Colors.blue.shade300 : Colors.blue,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -208,17 +224,20 @@ class _InvoiceSettingsMainScreenState extends State<InvoiceSettingsMainScreen> w
           // Tab Bar with better styling
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
               border: Border(
-                bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                  width: 1,
+                ),
               ),
             ),
             child: TabBar(
               controller: _tabController,
               isScrollable: true,
-              labelColor: Theme.of(context).primaryColor,
-              unselectedLabelColor: Colors.grey[600],
-              indicatorColor: Theme.of(context).primaryColor,
+              labelColor: isDark ? Colors.blue.shade300 : Theme.of(context).primaryColor,
+              unselectedLabelColor: isDark ? Colors.white : Colors.grey[600],
+              indicatorColor: isDark ? Colors.blue.shade300 : Theme.of(context).primaryColor,
               indicatorWeight: 3,
               labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),

@@ -45,12 +45,17 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> wit
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transaction Details'),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
+          labelColor: isDark ? Colors.white : Colors.white,
+          unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white70,
+          indicatorColor: Colors.white,
           tabs: const [
             Tab(text: 'Purchase (Date Range)'),
             Tab(text: 'Sales (Date Range)'),
@@ -199,6 +204,7 @@ class _DateRangeReportState extends State<_DateRangeReport> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final grandTotal = _transactions.fold<double>(
       0,
       (sum, t) => sum + (t['total_amount'] as num).toDouble(),
@@ -209,23 +215,29 @@ class _DateRangeReportState extends State<_DateRangeReport> {
         // Date Range Selector
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.grey[100],
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
           child: Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Date Range',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _startDate != null && _endDate != null
                           ? '${DateFormat('dd MMM yyyy').format(_startDate!)} - ${DateFormat('dd MMM yyyy').format(_endDate!)}'
                           : 'Select date range',
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[300] : Colors.black87,
+                      ),
                     ),
                   ],
                 ),
@@ -248,20 +260,25 @@ class _DateRangeReportState extends State<_DateRangeReport> {
         // Summary
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.blue[50],
+          color: isDark
+              ? Colors.blue.shade900.withValues(alpha: 0.3)
+              : Colors.blue[50],
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Total Transactions: ${_transactions.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
               ),
               Text(
                 'Grand Total: ${widget.currencySymbol}${grandTotal.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: Colors.blue,
+                  color: isDark ? Colors.blue.shade300 : Colors.blue,
                 ),
               ),
             ],
@@ -281,7 +298,9 @@ class _DateRangeReportState extends State<_DateRangeReport> {
                       child: SingleChildScrollView(
                         child: DataTable(
                           columnSpacing: 16,
-                          headingRowColor: WidgetStateProperty.all(Colors.grey[200]),
+                          headingRowColor: WidgetStateProperty.all(
+                            isDark ? const Color(0xFF334155) : Colors.grey[200],
+                          ),
                           columns: const [
                             DataColumn(label: Text('Invoice')),
                             DataColumn(label: Text('Date')),
@@ -539,6 +558,7 @@ class _HourlyReportState extends State<_HourlyReport> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final grandTotal = _transactions.fold<double>(
       0,
       (sum, t) => sum + (t['total_amount'] as num).toDouble(),
@@ -549,7 +569,7 @@ class _HourlyReportState extends State<_HourlyReport> {
         // Header
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.grey[100],
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
           child: Column(
             children: [
               Row(
@@ -558,19 +578,28 @@ class _HourlyReportState extends State<_HourlyReport> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Hourly Transactions',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           DateFormat('dd MMM yyyy').format(_selectedDate),
-                          style: const TextStyle(fontSize: 12),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[300] : Colors.black87,
+                          ),
                         ),
                         if (_startHour != null || _endHour != null)
                           Text(
                             'Hours: ${_startHour?.toString().padLeft(2, '0') ?? '00'}:00 - ${_endHour?.toString().padLeft(2, '0') ?? '23'}:59',
-                            style: const TextStyle(fontSize: 10, color: Colors.blue),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isDark ? Colors.blue.shade300 : Colors.blue,
+                            ),
                           ),
                       ],
                     ),
@@ -607,20 +636,25 @@ class _HourlyReportState extends State<_HourlyReport> {
         // Summary
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.green[50],
+          color: isDark
+              ? Colors.green.shade900.withValues(alpha: 0.3)
+              : Colors.green[50],
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Total Transactions: ${_transactions.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
               ),
               Text(
                 'Grand Total: ${widget.currencySymbol}${grandTotal.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: Colors.green,
+                  color: isDark ? Colors.green.shade300 : Colors.green,
                 ),
               ),
             ],
@@ -640,7 +674,9 @@ class _HourlyReportState extends State<_HourlyReport> {
                       child: SingleChildScrollView(
                         child: DataTable(
                           columnSpacing: 16,
-                          headingRowColor: WidgetStateProperty.all(Colors.grey[200]),
+                          headingRowColor: WidgetStateProperty.all(
+                            isDark ? const Color(0xFF334155) : Colors.grey[200],
+                          ),
                           columns: const [
                             DataColumn(label: Text('Invoice')),
                             DataColumn(label: Text('Hour')),
