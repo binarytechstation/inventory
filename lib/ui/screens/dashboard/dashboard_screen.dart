@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../supplier/suppliers_screen.dart';
 import '../customer/customers_screen.dart';
@@ -12,6 +11,7 @@ import '../user/users_screen.dart';
 import '../settings/settings_screen.dart';
 import '../reports/reports_screen.dart';
 import '../pos/pos_screen.dart';
+import '../held_bills/held_bills_screen.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/currency/currency_service.dart';
@@ -48,6 +48,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Suppliers',
     'Customers',
     'Transactions',
+    'Held Bills',
     'Reports',
     'Users',
     'Settings',
@@ -59,6 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Icons.local_shipping,
     Icons.people,
     Icons.receipt_long,
+    Icons.pause_circle_outline,
     Icons.analytics,
     Icons.group,
     Icons.settings,
@@ -75,9 +77,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (user.hasPermission('view_suppliers')) allowed.add(2); // Suppliers
     if (user.hasPermission('view_customers')) allowed.add(3); // Customers
     if (user.hasPermission('view_transactions')) allowed.add(4); // Transactions
-    if (user.hasPermission('view_reports')) allowed.add(5); // Reports
-    if (user.isAdmin) allowed.add(6); // Users (admin only)
-    if (user.isAdmin) allowed.add(7); // Settings (admin only)
+    if (user.hasPermission('view_transactions')) allowed.add(5); // Held Bills
+    if (user.hasPermission('view_reports')) allowed.add(6); // Reports
+    if (user.isAdmin) allowed.add(7); // Users (admin only)
+    if (user.isAdmin) allowed.add(8); // Settings (admin only)
 
     return allowed;
   }
@@ -329,10 +332,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 4:
         return const TransactionsScreen();
       case 5:
-        return const ReportsScreen();
+        return const HeldBillsScreen();
       case 6:
-        return const UsersScreen();
+        return const ReportsScreen();
       case 7:
+        return const UsersScreen();
+      case 8:
         return const SettingsScreen();
       default:
         return _buildDashboardView();
@@ -488,7 +493,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Icons.analytics,
                     Colors.orange,
                     () {
-                      setState(() => _selectedIndex = 5);
+                      setState(() => _selectedIndex = 6);
                     },
                   ),
                 ),
@@ -740,7 +745,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -749,26 +754,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [color.withValues(alpha: 0.8), color],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
                         color: color.withValues(alpha: 0.3),
-                        blurRadius: 8,
+                        blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Icon(icon, color: Colors.white, size: 28),
+                  child: Icon(icon, color: Colors.white, size: 22),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -777,8 +782,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.trending_up, color: Colors.green, size: 14),
-                      const SizedBox(width: 4),
+                      Icon(Icons.trending_up, color: Colors.green, size: 12),
+                      const SizedBox(width: 3),
                       Text(
                         'Live',
                         style: TextStyle(
@@ -792,22 +797,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 32,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                     color: color,
-                    letterSpacing: -1,
+                    letterSpacing: -0.5,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   title,
                   style: TextStyle(

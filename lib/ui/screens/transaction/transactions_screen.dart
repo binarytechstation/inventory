@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'purchase_order_screen.dart';
+import 'return_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../../services/transaction/transaction_service.dart';
+import '../../../services/customer/customer_service.dart';
 import '../../../services/currency/currency_service.dart';
 import '../../../services/invoice/invoice_service.dart';
+import '../../../data/models/customer_model.dart';
 import '../../providers/auth_provider.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -75,6 +78,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
           controller: _tabController,
           indicatorColor: Colors.white,
           indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
           tabs: const [
             Tab(text: 'Buy / Purchase', icon: Icon(Icons.shopping_cart)),
             Tab(text: 'Sell / Sales', icon: Icon(Icons.point_of_sale)),
@@ -118,6 +123,7 @@ class _TransactionTypeView extends StatefulWidget {
 class _TransactionTypeViewState extends State<_TransactionTypeView> with AutomaticKeepAliveClientMixin {
   final CurrencyService _currencyService = CurrencyService();
   final InvoiceService _invoiceService = InvoiceService();
+  final CustomerService _customerService = CustomerService();
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
   bool _isLoading = false;
@@ -540,6 +546,26 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
+          if (widget.type == 'SELL')
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, child) {
+                final canSell = authProvider.currentUser?.hasPermission('create_sale') ?? false;
+                if (!canSell) return const SizedBox.shrink();
+                return TextButton.icon(
+                  icon: const Icon(Icons.reply, size: 18),
+                  label: const Text('Return'),
+                  onPressed: () async {
+                    final partyId = transaction['party_id'] as int?;
+                    if (partyId == null) return;
+                    final nav = Navigator.of(context);
+                    final customer = await _customerService.getCustomerById(partyId);
+                    if (!mounted || customer == null) return;
+                    nav.pop();
+                    nav.push(MaterialPageRoute(builder: (_) => CustomerReturnScreen(customer: customer)));
+                  },
+                );
+              },
+            ),
           Consumer<AuthProvider>(
             builder: (context, authProvider, child) {
               final canPrint = authProvider.currentUser?.hasPermission('print_invoice') ?? false;

@@ -64,4 +64,34 @@ class CustomerModel {
   bool hasAvailableCredit(double amount) {
     return (currentBalance + amount) <= creditLimit;
   }
+
+  CustomerModel copyWith({
+    int? id,
+    String? name,
+    String? companyName,
+    String? phone,
+    String? email,
+    String? address,
+    double? creditLimit,
+    double? currentBalance,
+    String? notes,
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return CustomerModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      companyName: companyName ?? this.companyName,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      creditLimit: creditLimit ?? this.creditLimit,
+      currentBalance: currentBalance ?? this.currentBalance,
+      notes: notes ?? this.notes,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }

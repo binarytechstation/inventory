@@ -570,6 +570,67 @@ class DatabaseSchema {
     )
   ''';
 
+  // Supplier payments table - records payments made to suppliers to clear dues
+  static const String createSupplierPaymentsTable = '''
+    CREATE TABLE supplier_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      payment_date TEXT NOT NULL,
+      payment_method TEXT DEFAULT 'cash',
+      reference_number TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  ''';
+
+  // Customer payments table - records payments received from customers to clear dues
+  static const String createCustomerPaymentsTable = '''
+    CREATE TABLE customer_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      payment_date TEXT NOT NULL,
+      payment_method TEXT DEFAULT 'cash',
+      reference_number TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (customer_id) REFERENCES customers(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  ''';
+
+  // Defective stock table - tracks defective/damaged items
+  static const String createDefectiveStockTable = '''
+    CREATE TABLE defective_stock (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      lot_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      source TEXT NOT NULL,
+      source_transaction_id INTEGER,
+      party_id INTEGER,
+      party_type TEXT,
+      party_name TEXT,
+      reason TEXT,
+      supplier_return_status TEXT DEFAULT 'PENDING',
+      supplier_return_transaction_id INTEGER,
+      is_refundable INTEGER DEFAULT 1,
+      refund_amount REAL DEFAULT 0,
+      reported_by INTEGER,
+      reported_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (product_id, lot_id) REFERENCES products(product_id, lot_id),
+      FOREIGN KEY (reported_by) REFERENCES users(id)
+    )
+  ''';
+
   // Invoice activity logs table
   static const String createInvoiceActivityLogsTable = '''
     CREATE TABLE invoice_activity_logs (

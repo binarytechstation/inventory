@@ -56,131 +56,204 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reports'),
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Business Reports',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 160,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              title: const Text(
+                'Business Reports',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.indigo.shade800, Colors.blue.shade600],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 56),
+                    child: Row(
+                      children: [
+                        _headerStat(Icons.receipt_long, 'Transactions', Colors.white),
+                        const SizedBox(width: 16),
+                        _headerStat(Icons.trending_up, 'Sales', Colors.greenAccent),
+                        const SizedBox(width: 16),
+                        _headerStat(Icons.inventory_2, 'Inventory', Colors.amberAccent),
+                        const SizedBox(width: 16),
+                        _headerStat(Icons.account_balance, 'P & L', Colors.pinkAccent),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Generate and export comprehensive business reports',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionHeader('Financial Reports', Icons.attach_money, Colors.green, isDark),
+                  const SizedBox(height: 12),
+                  _buildReportsRow([
+                    _buildReportCard(
+                      title: 'Sales Summary',
+                      description: 'Revenue, discounts, taxes, and transaction counts',
+                      icon: Icons.trending_up,
+                      color: Colors.green,
+                      onView: () => _showSalesReport(context),
+                      onExportPDF: () => _exportToPDF('Sales Summary'),
+                      onExportExcel: () => _exportToExcel('Sales Summary'),
+                    ),
+                    _buildReportCard(
+                      title: 'Purchase Summary',
+                      description: 'Procurement costs, suppliers, and order history',
+                      icon: Icons.shopping_cart,
+                      color: Colors.blue,
+                      onView: () => _showPurchaseReport(context),
+                      onExportPDF: () => _exportToPDF('Purchase Summary'),
+                      onExportExcel: () => _exportToExcel('Purchase Summary'),
+                    ),
+                    _buildReportCard(
+                      title: 'Profit & Loss',
+                      description: 'Revenue vs expenses and profitability analysis',
+                      icon: Icons.account_balance,
+                      color: Colors.indigo,
+                      onView: () => _showProfitLossReport(context),
+                      onExportPDF: () => _exportToPDF('Profit & Loss'),
+                      onExportExcel: () => _exportToExcel('Profit & Loss'),
+                    ),
+                  ]),
+                  const SizedBox(height: 28),
+                  _sectionHeader('Inventory & Products', Icons.inventory_2, Colors.orange, isDark),
+                  const SizedBox(height: 12),
+                  _buildReportsRow([
+                    _buildReportCard(
+                      title: 'Inventory Report',
+                      description: 'Stock levels, valuations, and batch details',
+                      icon: Icons.inventory_2,
+                      color: Colors.orange,
+                      onView: () => _showInventoryReport(context),
+                      onExportPDF: () => _exportToPDF('Inventory Report'),
+                      onExportExcel: () => _exportToExcel('Inventory Report'),
+                    ),
+                    _buildReportCard(
+                      title: 'Product Performance',
+                      description: 'Top selling products and category trends',
+                      icon: Icons.star,
+                      color: Colors.amber,
+                      onView: () => _showProductPerformanceReport(context),
+                      onExportPDF: () => _exportToPDF('Product Performance'),
+                      onExportExcel: () => _exportToExcel('Product Performance'),
+                    ),
+                    _buildReportCard(
+                      title: 'Category Analysis',
+                      description: 'Sales performance broken down by product category',
+                      icon: Icons.category,
+                      color: Colors.pink,
+                      onView: () => _showCategoryReport(context),
+                      onExportPDF: () => _exportToPDF('Category Analysis'),
+                      onExportExcel: () => _exportToExcel('Category Analysis'),
+                    ),
+                  ]),
+                  const SizedBox(height: 28),
+                  _sectionHeader('Parties & Transactions', Icons.people, Colors.purple, isDark),
+                  const SizedBox(height: 12),
+                  _buildReportsRow([
+                    _buildReportCard(
+                      title: 'Customer Report',
+                      description: 'Balances, credit limits, and purchase history',
+                      icon: Icons.people,
+                      color: Colors.purple,
+                      onView: () => _showCustomerReport(context),
+                      onExportPDF: () => _exportToPDF('Customer Report'),
+                      onExportExcel: () => _exportToExcel('Customer Report'),
+                    ),
+                    _buildReportCard(
+                      title: 'Supplier Report',
+                      description: 'Supplier statistics and procurement analysis',
+                      icon: Icons.local_shipping,
+                      color: Colors.teal,
+                      onView: () => _showSupplierReport(context),
+                      onExportPDF: () => _exportToPDF('Supplier Report'),
+                      onExportExcel: () => _exportToExcel('Supplier Report'),
+                    ),
+                    _buildReportCard(
+                      title: 'Transaction Details',
+                      description: 'Detailed transaction log with hourly analysis',
+                      icon: Icons.receipt_long,
+                      color: Colors.cyan,
+                      onView: () => _navigateToTransactionDetails(context),
+                      onExportPDF: null,
+                      onExportExcel: null,
+                    ),
+                  ]),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
-            const SizedBox(height: 32),
-            _buildReportsGrid(),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildReportsGrid() {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 24,
-      mainAxisSpacing: 24,
-      childAspectRatio: 1.2,
-      children: [
-        _buildReportCard(
-          title: 'Transaction Details',
-          description: 'Detailed transaction reports with date range and hourly analysis',
-          icon: Icons.receipt_long,
-          color: Colors.cyan,
-          onView: () => _navigateToTransactionDetails(context),
-          onExportPDF: null, // Export handled in detail screen
-          onExportExcel: null, // Export handled in detail screen
-        ),
-        _buildReportCard(
-          title: 'Sales Summary',
-          description: 'View sales performance, revenue, and transaction details',
-          icon: Icons.trending_up,
-          color: Colors.green,
-          onView: () => _showSalesReport(context),
-          onExportPDF: () => _exportToPDF('Sales Summary'),
-          onExportExcel: () => _exportToExcel('Sales Summary'),
-        ),
-        _buildReportCard(
-          title: 'Purchase Summary',
-          description: 'Track purchases, suppliers, and procurement costs',
-          icon: Icons.shopping_cart,
-          color: Colors.blue,
-          onView: () => _showPurchaseReport(context),
-          onExportPDF: () => _exportToPDF('Purchase Summary'),
-          onExportExcel: () => _exportToExcel('Purchase Summary'),
-        ),
-        _buildReportCard(
-          title: 'Inventory Report',
-          description: 'Current stock levels, valuations, and batch details',
-          icon: Icons.inventory_2,
-          color: Colors.orange,
-          onView: () => _showInventoryReport(context),
-          onExportPDF: () => _exportToPDF('Inventory Report'),
-          onExportExcel: () => _exportToExcel('Inventory Report'),
-        ),
-        _buildReportCard(
-          title: 'Product Performance',
-          description: 'Top selling products and sales trends',
-          icon: Icons.star,
-          color: Colors.amber,
-          onView: () => _showProductPerformanceReport(context),
-          onExportPDF: () => _exportToPDF('Product Performance'),
-          onExportExcel: () => _exportToExcel('Product Performance'),
-        ),
-        _buildReportCard(
-          title: 'Customer Report',
-          description: 'Customer balances, credit limits, and purchase history',
-          icon: Icons.people,
-          color: Colors.purple,
-          onView: () => _showCustomerReport(context),
-          onExportPDF: () => _exportToPDF('Customer Report'),
-          onExportExcel: () => _exportToExcel('Customer Report'),
-        ),
-        _buildReportCard(
-          title: 'Supplier Report',
-          description: 'Supplier statistics and purchase analysis',
-          icon: Icons.local_shipping,
-          color: Colors.teal,
-          onView: () => _showSupplierReport(context),
-          onExportPDF: () => _exportToPDF('Supplier Report'),
-          onExportExcel: () => _exportToExcel('Supplier Report'),
-        ),
-        _buildReportCard(
-          title: 'Profit & Loss',
-          description: 'Revenue, expenses, and profitability analysis',
-          icon: Icons.account_balance,
-          color: Colors.indigo,
-          onView: () => _showProfitLossReport(context),
-          onExportPDF: () => _exportToPDF('Profit & Loss'),
-          onExportExcel: () => _exportToExcel('Profit & Loss'),
-        ),
-        _buildReportCard(
-          title: 'Category Analysis',
-          description: 'Sales performance by product category',
-          icon: Icons.category,
-          color: Colors.pink,
-          onView: () => _showCategoryReport(context),
-          onExportPDF: () => _exportToPDF('Category Analysis'),
-          onExportExcel: () => _exportToExcel('Category Analysis'),
-        ),
-      ],
+  Widget _headerStat(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 5),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
     );
+  }
+
+  Widget _sectionHeader(String title, IconData icon, Color color, bool isDark) {
+    return Row(children: [
+      Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 18, color: color),
+      ),
+      const SizedBox(width: 10),
+      Text(
+        title,
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white : Colors.grey[850],
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(child: Divider(color: color.withValues(alpha: 0.3), thickness: 1)),
+    ]);
+  }
+
+  Widget _buildReportsRow(List<Widget> cards) {
+    final items = <Widget>[];
+    for (int i = 0; i < cards.length; i++) {
+      if (i > 0) items.add(const SizedBox(width: 16));
+      items.add(Expanded(child: cards[i]));
+    }
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: items);
   }
 
   void _navigateToTransactionDetails(BuildContext context) {
@@ -201,127 +274,131 @@ class _ReportsScreenState extends State<ReportsScreen> {
     VoidCallback? onExportPDF,
     VoidCallback? onExportExcel,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Icon and title
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Description
-            Expanded(
-              child: Text(
-                description,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                  height: 1.4,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+      elevation: 3,
+      shadowColor: color.withValues(alpha: 0.25),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Colored gradient banner with icon
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, color.withValues(alpha: 0.75)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
-            const SizedBox(height: 16),
-            // Action buttons
-            Column(
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+          ),
+          // Body
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    height: 1.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: onView,
-                    icon: const Icon(Icons.visibility, size: 18),
-                    label: const Text('View Report'),
+                    icon: const Icon(Icons.bar_chart, size: 16),
+                    label: const Text('View Report', style: TextStyle(fontSize: 13)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: color,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                if (onExportPDF != null || onExportExcel != null)
+                if (onExportPDF != null || onExportExcel != null) ...[
+                  const SizedBox(height: 8),
                   Consumer<AuthProvider>(
                     builder: (context, authProvider, child) {
                       final canExport = authProvider.currentUser?.hasPermission('export_reports') ?? false;
-
-                      return Row(
-                        children: [
-                          if (onExportPDF != null)
-                            Expanded(
-                              child: Tooltip(
-                                message: canExport ? '' : 'Admin access only',
-                                child: OutlinedButton.icon(
-                                  onPressed: canExport ? onExportPDF : null,
-                                  icon: const Icon(Icons.picture_as_pdf, size: 16),
-                                  label: const Text('PDF'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
+                      return Row(children: [
+                        if (onExportPDF != null)
+                          Expanded(
+                            child: Tooltip(
+                              message: canExport ? '' : 'Admin only',
+                              child: OutlinedButton.icon(
+                                onPressed: canExport ? onExportPDF : null,
+                                icon: Icon(Icons.picture_as_pdf, size: 14, color: canExport ? Colors.red[700] : null),
+                                label: const Text('PDF', style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  side: BorderSide(color: canExport ? Colors.red.shade300 : Colors.grey.shade300),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
                               ),
                             ),
-                          if (onExportPDF != null && onExportExcel != null)
-                            const SizedBox(width: 8),
-                          if (onExportExcel != null)
-                            Expanded(
-                              child: Tooltip(
-                                message: canExport ? '' : 'Admin access only',
-                                child: OutlinedButton.icon(
-                                  onPressed: canExport ? onExportExcel : null,
-                                  icon: const Icon(Icons.table_chart, size: 16),
-                                  label: const Text('Excel'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
+                          ),
+                        if (onExportPDF != null && onExportExcel != null) const SizedBox(width: 6),
+                        if (onExportExcel != null)
+                          Expanded(
+                            child: Tooltip(
+                              message: canExport ? '' : 'Admin only',
+                              child: OutlinedButton.icon(
+                                onPressed: canExport ? onExportExcel : null,
+                                icon: Icon(Icons.table_chart, size: 14, color: canExport ? Colors.green[700] : null),
+                                label: const Text('Excel', style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  side: BorderSide(color: canExport ? Colors.green.shade300 : Colors.grey.shade300),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
                               ),
                             ),
-                        ],
-                      );
+                          ),
+                      ]);
                     },
                   ),
+                ],
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

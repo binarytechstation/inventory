@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/currency/currency_service.dart';
+import 'defective_stock_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -110,6 +110,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
         title: const Text('Products'),
         elevation: 2,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.warning_amber_rounded),
+            tooltip: 'Defective Stock',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const DefectiveStockScreen())),
+          ),
           // View toggle buttons
           Container(
             margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
@@ -435,12 +441,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         const SizedBox(width: 4),
                         if (hasPriceRange)
                           Text(
-                            '$_currencySymbol${minPrice!.toStringAsFixed(2)} - $_currencySymbol${maxPrice!.toStringAsFixed(2)}',
+                            '$_currencySymbol${minPrice.toStringAsFixed(2)} - $_currencySymbol${maxPrice.toStringAsFixed(2)}',
                             style: const TextStyle(fontSize: 13),
                           )
                         else if (minPrice != null)
                           Text(
-                            '$_currencySymbol${minPrice!.toStringAsFixed(2)}',
+                            '$_currencySymbol${minPrice.toStringAsFixed(2)}',
                             style: const TextStyle(fontSize: 13),
                           ),
                       ],

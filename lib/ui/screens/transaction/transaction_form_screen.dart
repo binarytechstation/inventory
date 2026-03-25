@@ -32,6 +32,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   // Transaction data
   DateTime _transactionDate = DateTime.now();
   String _paymentMode = 'cash';
+  double? _paidAmount; // for mixed payment
+  final TextEditingController _paidAmountController = TextEditingController();
   dynamic _selectedParty; // CustomerModel or SupplierModel
   final TextEditingController _notesController = TextEditingController();
 
@@ -69,6 +71,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   @override
   void dispose() {
     _notesController.dispose();
+    _paidAmountController.dispose();
     super.dispose();
   }
 
@@ -230,6 +233,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         tax: _tax,
         total: _total,
         paymentMode: _paymentMode,
+        paidAmount: _paymentMode == 'mixed' ? _paidAmount : null,
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       );
 
@@ -345,12 +349,34 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                   segments: const [
                                     ButtonSegment(value: 'cash', label: Text('Cash')),
                                     ButtonSegment(value: 'credit', label: Text('Credit')),
+                                    ButtonSegment(value: 'mixed', label: Text('Mixed')),
                                   ],
                                   selected: {_paymentMode},
                                   onSelectionChanged: (Set<String> selection) {
-                                    setState(() => _paymentMode = selection.first);
+                                    setState(() {
+                                      _paymentMode = selection.first;
+                                      if (_paymentMode != 'mixed') {
+                                        _paidAmount = null;
+                                        _paidAmountController.clear();
+                                      }
+                                    });
                                   },
                                 ),
+                                if (_paymentMode == 'mixed') ...[
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _paidAmountController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Cash Paid Now ($_currencySymbol)',
+                                      hintText: 'Remainder goes on credit',
+                                      prefixText: '$_currencySymbol ',
+                                      border: const OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                    onChanged: (v) => _paidAmount = double.tryParse(v),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

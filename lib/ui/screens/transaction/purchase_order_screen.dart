@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../data/models/supplier_model.dart';
 import '../../../services/supplier/supplier_service.dart';
 import '../../../services/transaction/transaction_service.dart';
@@ -27,6 +26,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
   SupplierModel? _selectedSupplier;
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _lotNumberController = TextEditingController();
+  final TextEditingController _cashPaidController = TextEditingController();
 
   // Products in this lot
   final List<Map<String, dynamic>> _products = [];
@@ -78,6 +78,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
   void dispose() {
     _notesController.dispose();
     _lotNumberController.dispose();
+    _cashPaidController.dispose();
     super.dispose();
   }
 
@@ -505,6 +506,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         lotData: lotData,
         products: formattedProducts,
         paymentMode: _paymentMode,
+        paidAmount: _paymentMode == 'partial'
+            ? double.tryParse(_cashPaidController.text) ?? 0
+            : null,
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         subtotal: _subtotal,
         discount: _discount,
@@ -610,22 +614,76 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                       ),
                       Expanded(
                         child: Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.payment),
-                            title: const Text('Payment'),
-                            subtitle: DropdownButton<String>(
-                              value: _paymentMode,
-                              isExpanded: true,
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                                DropdownMenuItem(value: 'credit', child: Text('Credit')),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.payment, size: 20),
+                                    const SizedBox(width: 8),
+                                    const Text('Payment Mode',
+                                        style: TextStyle(fontWeight: FontWeight.w500)),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                SegmentedButton<String>(
+                                  segments: const [
+                                    ButtonSegment(
+                                        value: 'cash',
+                                        label: Text('Cash'),
+                                        icon: Icon(Icons.money, size: 16)),
+                                    ButtonSegment(
+                                        value: 'partial',
+                                        label: Text('Partial'),
+                                        icon: Icon(Icons.pie_chart, size: 16)),
+                                    ButtonSegment(
+                                        value: 'credit',
+                                        label: Text('Credit'),
+                                        icon: Icon(Icons.credit_card, size: 16)),
+                                  ],
+                                  selected: {_paymentMode},
+                                  onSelectionChanged: (s) => setState(() {
+                                    _paymentMode = s.first;
+                                    _cashPaidController.clear();
+                                  }),
+                                  style: const ButtonStyle(
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                                if (_paymentMode == 'partial') ...[
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: _cashPaidController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Cash Paid ($_currencySymbol)',
+                                      border: const OutlineInputBorder(),
+                                      isDense: true,
+                                      suffixText: _total > 0 &&
+                                              _cashPaidController.text.isNotEmpty
+                                          ? 'Credit: $_currencySymbol${(_total - (double.tryParse(_cashPaidController.text) ?? 0)).clamp(0, _total).toStringAsFixed(2)}'
+                                          : null,
+                                      suffixStyle:
+                                          const TextStyle(color: Colors.orange, fontSize: 11),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (_) => setState(() {}),
+                                    validator: (v) {
+                                      if (_paymentMode != 'partial') return null;
+                                      if (v == null || v.trim().isEmpty) {
+                                        return 'Enter cash amount';
+                                      }
+                                      final n = double.tryParse(v);
+                                      if (n == null || n < 0) return 'Invalid amount';
+                                      if (n > _total) {
+                                        return 'Cannot exceed total';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
                               ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _paymentMode = value);
-                                }
-                              },
                             ),
                           ),
                         ),
@@ -830,6 +888,23 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                       ),
                     ],
                   ),
+                  if (_paymentMode == 'partial') ...[
+                    const SizedBox(height: 4),
+                    Builder(builder: (_) {
+                      final cashPaid =
+                          (double.tryParse(_cashPaidController.text) ?? 0).clamp(0, _total);
+                      final credit = _total - cashPaid;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Cash: $_currencySymbol${cashPaid.toStringAsFixed(2)}  •  Credit: $_currencySymbol${credit.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.orange, fontSize: 13),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -888,8 +963,12 @@ class _AddProductDialogState extends State<_AddProductDialog> {
 
   final ProductService _productService = ProductService();
   List<String> _existingProductNames = [];
+  List<String> _existingCategories = [];
   bool _isLoadingProducts = true;
   bool _isExistingProduct = false;
+
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _categoryFocusNode = FocusNode();
 
   String _unit = 'piece';
 
@@ -915,10 +994,14 @@ class _AddProductDialogState extends State<_AddProductDialog> {
 
   Future<void> _loadExistingProducts() async {
     try {
-      final names = await _productService.getAllProductNames();
+      final results = await Future.wait([
+        _productService.getAllProductNames(),
+        _productService.getAllCategories(),
+      ]);
       if (mounted) {
         setState(() {
-          _existingProductNames = names;
+          _existingProductNames = results[0];
+          _existingCategories = results[1];
           _isLoadingProducts = false;
         });
       }
@@ -967,6 +1050,8 @@ class _AddProductDialogState extends State<_AddProductDialog> {
     _barcodeController.dispose();
     _categoryController.dispose();
     _descriptionController.dispose();
+    _nameFocusNode.dispose();
+    _categoryFocusNode.dispose();
     super.dispose();
   }
 
@@ -1004,7 +1089,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                 // Product Name Autocomplete (allows both new and existing)
                 RawAutocomplete<String>(
                   textEditingController: _nameController,
-                  focusNode: FocusNode(),
+                  focusNode: _nameFocusNode,
                   optionsBuilder: (textEditingValue) {
                     if (textEditingValue.text.isEmpty) {
                       return const Iterable<String>.empty();
@@ -1057,7 +1142,15 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                               )
                             : null,
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Required';
+                        if (!_isExistingProduct &&
+                            _existingProductNames.any((n) =>
+                                n.toLowerCase() == v.trim().toLowerCase())) {
+                          return 'Product already exists — select it from the list';
+                        }
+                        return null;
+                      },
                     );
                   },
                   optionsViewBuilder: (context, onSelected, options) {
@@ -1108,7 +1201,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _unit,
+                        initialValue: _unit,
                         decoration: const InputDecoration(
                           labelText: 'Unit',
                           border: OutlineInputBorder(),
@@ -1193,19 +1286,64 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        controller: _categoryController,
-                        decoration: const InputDecoration(
-                          labelText: 'Category *',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter category';
+                      child: RawAutocomplete<String>(
+                        textEditingController: _categoryController,
+                        focusNode: _categoryFocusNode,
+                        optionsBuilder: (textEditingValue) {
+                          if (textEditingValue.text.isEmpty) {
+                            return _existingCategories;
                           }
-                          return null;
+                          return _existingCategories.where((c) => c
+                              .toLowerCase()
+                              .contains(textEditingValue.text.toLowerCase()));
                         },
-                        textCapitalization: TextCapitalization.words,
+                        onSelected: (String selection) {
+                          _categoryController.text = selection;
+                        },
+                        fieldViewBuilder:
+                            (context, controller, focusNode, onFieldSubmitted) {
+                          return TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: const InputDecoration(
+                              labelText: 'Category *',
+                              border: OutlineInputBorder(),
+                              hintText: 'Type or select existing category',
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Please enter category';
+                              }
+                              return null;
+                            },
+                          );
+                        },
+                        optionsViewBuilder: (context, onSelected, options) {
+                          return Align(
+                            alignment: Alignment.topLeft,
+                            child: Material(
+                              elevation: 4,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                    maxHeight: 200, maxWidth: 220),
+                                child: ListView.builder(
+                                  padding: EdgeInsets.zero,
+                                  shrinkWrap: true,
+                                  itemCount: options.length,
+                                  itemBuilder: (context, index) {
+                                    final option = options.elementAt(index);
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(option),
+                                      onTap: () => onSelected(option),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),

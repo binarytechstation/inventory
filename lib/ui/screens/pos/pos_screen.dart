@@ -26,6 +26,7 @@ class _POSScreenState extends State<POSScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
+  final TextEditingController _cashPaidController = TextEditingController();
 
   List<dynamic> _products = [];
   List<dynamic> _filteredProducts = [];
@@ -66,6 +67,7 @@ class _POSScreenState extends State<POSScreen> {
   void dispose() {
     _searchController.dispose();
     _discountController.dispose();
+    _cashPaidController.dispose();
     super.dispose();
   }
 
@@ -207,7 +209,7 @@ class _POSScreenState extends State<POSScreen> {
                       image: DecorationImage(
                         image: FileImage(File(productImage)),
                         fit: BoxFit.cover,
-                        onError: (_, __) => const SizedBox(),
+                        onError: (_, _) => const SizedBox(),
                       ),
                     ),
                   ),
@@ -922,6 +924,7 @@ class _POSScreenState extends State<POSScreen> {
         };
       }).toList();
 
+      final total = _calculateTotal();
       final transactionId = await _transactionService.createTransaction(
         type: 'SELL',
         date: DateTime.now(),
@@ -931,8 +934,11 @@ class _POSScreenState extends State<POSScreen> {
         subtotal: _calculateSubtotal(),
         discount: _calculateDiscount(),
         tax: _calculateTax(),
-        total: _calculateTotal(),
+        total: total,
         paymentMode: _paymentMethod,
+        paidAmount: _paymentMethod == 'partial'
+            ? (double.tryParse(_cashPaidController.text) ?? 0).clamp(0, total)
+            : null,
         status: 'COMPLETED',
       );
 
@@ -1101,6 +1107,7 @@ class _POSScreenState extends State<POSScreen> {
       _cart.clear();
       _selectedCustomer = null;
       _discountController.clear();
+      _cashPaidController.clear();
       _paymentMethod = 'cash';
     });
   }
@@ -1132,47 +1139,94 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   Widget _buildProductSelection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         // Search bar
-        Padding(
-          padding: const EdgeInsets.all(16),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'Search by name, barcode, or SKU...',
-              prefixIcon: const Icon(Icons.search),
+              hintText: 'Search by name, barcode, or SKU…',
+              hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+              prefixIcon: Icon(Icons.search_rounded,
+                  color: Colors.blue.shade400, size: 22),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: _searchController.clear,
                     )
                   : null,
+              filled: true,
+              fillColor: isDark ? const Color(0xFF334155) : Colors.grey.shade100,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.blue.shade400, width: 1.5),
               ),
             ),
           ),
         ),
+        // Product count bar
+        if (_filteredProducts.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredProducts.length} products',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${_cart.length} in cart',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade500,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const Divider(height: 1),
         // Product grid
         Expanded(
           child: _filteredProducts.isEmpty
-              ? const Center(child: Text('No products found'))
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.search_off_rounded,
+                          size: 56, color: Colors.grey.shade300),
+                      const SizedBox(height: 12),
+                      Text('No products found',
+                          style: TextStyle(
+                              color: Colors.grey.shade500, fontSize: 15)),
+                    ],
+                  ),
+                )
               : GridView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.85,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.7,
                   ),
                   itemCount: _filteredProducts.length,
-                  itemBuilder: (context, index) {
-                    final product = _filteredProducts[index];
-                    return _buildProductCard(product);
-                  },
+                  itemBuilder: (context, index) =>
+                      _buildProductCard(_filteredProducts[index]),
                 ),
         ),
       ],
@@ -1296,197 +1350,249 @@ class _POSScreenState extends State<POSScreen> {
     final minPrice = ((productMap['min_price'] as num?)?.toDouble());
     final maxPrice = ((productMap['max_price'] as num?)?.toDouble());
     final imagePath = (productMap['image_path'] as String?);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Show price range if there are multiple lots with different prices
     String priceDisplay;
     if (lotsCount > 1 &&
         minPrice != null &&
         maxPrice != null &&
         minPrice != maxPrice) {
       priceDisplay =
-          '$_currencySymbol${minPrice.toStringAsFixed(2)} - $_currencySymbol${maxPrice.toStringAsFixed(2)}';
+          '$_currencySymbol${minPrice.toStringAsFixed(2)} – $_currencySymbol${maxPrice.toStringAsFixed(2)}';
     } else {
       priceDisplay = '$_currencySymbol${sellingPrice.toStringAsFixed(2)}';
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // check if already in cart
+    final cartQty = _cart.entries
+        .where((e) => e.value.productId == (productMap['product_id'] as int?))
+        .fold<double>(0, (s, e) => s + e.value.quantity);
+    final inCart = cartQty > 0;
 
     return Card(
-      elevation: 2,
+      elevation: inCart ? 6 : 3,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(16),
+        side: inCart
+            ? BorderSide(color: Colors.blue.shade400, width: 2)
+            : BorderSide(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade200),
       ),
+      shadowColor: inCart
+          ? Colors.blue.withValues(alpha: 0.3)
+          : Colors.black.withValues(alpha: 0.1),
       child: InkWell(
         onTap: () => _addToCart(productMap),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Product image with lot badge
-              Stack(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Image (top 62% of card) ──────────────────────────
+            Expanded(
+              flex: 62,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      height: 100,
-                      width: double.infinity,
+                  // Product image
+                  imagePath != null && imagePath.isNotEmpty
+                      ? Image.file(
+                          File(imagePath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, e, s) =>
+                              _buildPlaceholderImage(isDark),
+                        )
+                      : _buildPlaceholderImage(isDark),
+
+                  // Bottom gradient for readability
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 48,
+                    child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.35),
+                          ],
+                        ),
                       ),
-                      child: imagePath != null && imagePath.isNotEmpty
-                          ? Image.file(
-                              File(imagePath),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return _buildPlaceholderImage();
-                              },
-                            )
-                          : _buildPlaceholderImage(),
                     ),
                   ),
-                  // Lot count badge
-                  if (lotsCount > 1)
+
+                  // Cart quantity badge (top-left)
+                  if (inCart)
                     Positioned(
-                      top: 6,
-                      right: 6,
+                      top: 8,
+                      left: 8,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.blue.shade600,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2)),
                           ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.layers,
-                              size: 12,
-                              color: Colors.white,
-                            ),
+                            const Icon(Icons.shopping_cart_rounded,
+                                size: 11, color: Colors.white),
                             const SizedBox(width: 4),
                             Text(
-                              '$lotsCount',
+                              cartQty % 1 == 0
+                                  ? cartQty.toInt().toString()
+                                  : cartQty.toStringAsFixed(1),
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold),
                             ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // Lots badge (top-right)
+                  if (lotsCount > 1)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade600,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2)),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.layers_rounded,
+                                size: 11, color: Colors.white),
+                            const SizedBox(width: 3),
+                            Text('$lotsCount',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
                     ),
                 ],
               ),
-              const SizedBox(height: 10),
-              // Product name with tooltip for long names
-              Tooltip(
-                message: productName,
-                child: Text(
-                  productName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const Spacer(),
-              const SizedBox(height: 8),
-              // Price section
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.green.shade900.withValues(alpha: 0.3)
-                      : Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
+            ),
+
+            // ── Product info (bottom 38%) ────────────────────────
+            Expanded(
+              flex: 38,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
+                    // Product name
+                    Tooltip(
+                      message: productName,
                       child: Text(
-                        priceDisplay,
+                        productName,
                         style: TextStyle(
-                          color: isDark ? Colors.green.shade300 : Colors.green.shade700,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          height: 1.25,
+                          color: isDark ? Colors.white : Colors.grey.shade900,
                         ),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Icon(
-                      Icons.add_shopping_cart,
-                      size: 16,
-                      color: isDark ? Colors.green.shade300 : Colors.green.shade700,
+
+                    // Price + add button row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            priceDisplay,
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.green.shade300
+                                  : Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade600,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.blue.withValues(alpha: 0.3),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2)),
+                            ],
+                          ),
+                          child: const Icon(Icons.add_rounded,
+                              color: Colors.white, size: 18),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              if (lotsCount > 1)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 12,
-                        color: Colors.blue.shade600,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Multiple lots available',
-                        style: TextStyle(
-                          color: Colors.blue.shade600,
-                          fontSize: 10,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPlaceholderImage() {
+  Widget _buildPlaceholderImage(bool isDark) {
     return Container(
-      color: Colors.grey[100],
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey[400]),
-            const SizedBox(height: 4),
-            Text(
-              'No Image',
-              style: TextStyle(color: Colors.grey[500], fontSize: 11),
-            ),
-          ],
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [const Color(0xFF334155), const Color(0xFF1E293B)]
+              : [Colors.grey.shade100, Colors.grey.shade200],
         ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inventory_2_outlined,
+              size: 44, color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+          const SizedBox(height: 6),
+          Text(
+            'No Image',
+            style: TextStyle(
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                fontSize: 11,
+                fontWeight: FontWeight.w500),
+          ),
+        ],
       ),
     );
   }
@@ -1578,22 +1684,27 @@ class _POSScreenState extends State<POSScreen> {
         // Cart items
         Expanded(
           child: _cart.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.shopping_cart_outlined,
-                        size: 64,
-                        color: Colors.grey,
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxHeight < 120;
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (!compact) ...[
+                            Icon(Icons.shopping_cart_outlined,
+                                size: 48, color: Colors.grey.shade400),
+                            const SizedBox(height: 10),
+                          ],
+                          Text(
+                            'Cart is empty',
+                            style: TextStyle(
+                                color: Colors.grey.shade500, fontSize: 13),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Cart is empty',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 )
               : ListView.builder(
                   itemCount: _cart.length,
@@ -1912,7 +2023,7 @@ class _POSScreenState extends State<POSScreen> {
                         image: DecorationImage(
                           image: FileImage(File(item.productImage!)),
                           fit: BoxFit.cover,
-                          onError: (_, __) {},
+                          onError: (_, _) {},
                         ),
                       ),
                     ),
@@ -2253,7 +2364,7 @@ class _POSScreenState extends State<POSScreen> {
               ],
             ),
             child: DropdownButtonFormField<CustomerModel>(
-              value: _selectedCustomer,
+              initialValue: _selectedCustomer,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: isDark ? const Color(0xFF334155) : Colors.white,
@@ -2615,23 +2726,62 @@ class _POSScreenState extends State<POSScreen> {
                       icon: Icon(Icons.money, size: 18),
                     ),
                     ButtonSegment(
-                      value: 'credit',
-                      label: Text('Card'),
-                      icon: Icon(Icons.credit_card, size: 18),
+                      value: 'partial',
+                      label: Text('Partial'),
+                      icon: Icon(Icons.pie_chart, size: 18),
                     ),
                     ButtonSegment(
-                      value: 'bank',
-                      label: Text('Bank'),
-                      icon: Icon(Icons.account_balance, size: 18),
+                      value: 'credit',
+                      label: Text('Credit'),
+                      icon: Icon(Icons.credit_card, size: 18),
                     ),
                   ],
                   selected: {_paymentMethod},
                   onSelectionChanged: (Set<String> newSelection) {
                     setState(() {
                       _paymentMethod = newSelection.first;
+                      _cashPaidController.clear();
                     });
                   },
                 ),
+                if (_paymentMethod == 'partial') ...[
+                  const SizedBox(height: 12),
+                  Builder(builder: (context) {
+                    final total = _calculateTotal();
+                    final cashPaid =
+                        (double.tryParse(_cashPaidController.text) ?? 0)
+                            .clamp(0, total > 0 ? total : double.infinity);
+                    final credit = total > 0 ? (total - cashPaid) : 0.0;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _cashPaidController,
+                          decoration: InputDecoration(
+                            labelText: 'Cash Paid ($_currencySymbol)',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            isDense: true,
+                            prefixIcon: const Icon(Icons.money, size: 18),
+                            suffixText: total > 0 &&
+                                    _cashPaidController.text.isNotEmpty
+                                ? 'Credit: $_currencySymbol${credit.toStringAsFixed(2)}'
+                                : null,
+                            suffixStyle: TextStyle(
+                                color: Colors.orange.shade700, fontSize: 11),
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+\.?\d{0,2}')),
+                          ],
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
               ],
             ),
           ),
@@ -2817,6 +2967,50 @@ class _POSScreenState extends State<POSScreen> {
                     ],
                   ),
                 ),
+                if (_paymentMethod == 'partial') ...[
+                  const SizedBox(height: 8),
+                  Builder(builder: (_) {
+                    final cashPaid =
+                        (double.tryParse(_cashPaidController.text) ?? 0)
+                            .clamp(0, total);
+                    final credit = total - cashPaid;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.orange.shade900.withValues(alpha: 0.3)
+                            : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: isDark
+                                ? Colors.orange.shade700
+                                : Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Cash: $_currencySymbol${cashPaid.toStringAsFixed(2)}',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.green.shade300
+                                    : Colors.green.shade700,
+                                fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            'Credit: $_currencySymbol${credit.toStringAsFixed(2)}',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.orange.shade300
+                                    : Colors.orange.shade700,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),

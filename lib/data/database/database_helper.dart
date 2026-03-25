@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 7,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -99,6 +99,14 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_lot_history_date ON lot_history(created_at)');
     await db.execute('CREATE INDEX idx_product_master_name ON product_master(product_name)');
     await db.execute('CREATE INDEX idx_product_master_active ON product_master(is_active)');
+
+    // New tables (v8)
+    await db.execute(DatabaseSchema.createSupplierPaymentsTable);
+    await db.execute(DatabaseSchema.createCustomerPaymentsTable);
+    await db.execute(DatabaseSchema.createDefectiveStockTable);
+    await db.execute('CREATE INDEX idx_supplier_payments_supplier ON supplier_payments(supplier_id)');
+    await db.execute('CREATE INDEX idx_customer_payments_customer ON customer_payments(customer_id)');
+    await db.execute('CREATE INDEX idx_defective_stock_product ON defective_stock(product_id, lot_id)');
 
     // Transaction indexes
     await db.execute('CREATE INDEX idx_transactions_date ON transactions(transaction_date)');
@@ -440,6 +448,96 @@ class DatabaseHelper {
       }
 
       print('Migration to add selling_price complete!');
+    }
+
+    if (oldVersion < 8) {
+      print('Migrating to v8: credit/payment tracking + defective stock...');
+
+      // Add balance columns to suppliers
+      final supplierCols = await db.rawQuery('PRAGMA table_info(suppliers)');
+      if (!supplierCols.any((c) => c['name'] == 'credit_limit')) {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN credit_limit REAL DEFAULT 0');
+      }
+      if (!supplierCols.any((c) => c['name'] == 'current_balance')) {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN current_balance REAL DEFAULT 0');
+      }
+
+      // Add paid/credit breakdown to transactions
+      final txCols = await db.rawQuery('PRAGMA table_info(transactions)');
+      if (!txCols.any((c) => c['name'] == 'paid_amount')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0');
+      }
+      if (!txCols.any((c) => c['name'] == 'credit_amount')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN credit_amount REAL DEFAULT 0');
+      }
+      if (!txCols.any((c) => c['name'] == 'payment_status')) {
+        await db.execute("ALTER TABLE transactions ADD COLUMN payment_status TEXT DEFAULT 'PAID'");
+      }
+
+      // Backfill payment columns on existing transactions
+      await db.execute('''
+        UPDATE transactions
+        SET paid_amount = CASE WHEN payment_mode = 'credit' THEN 0 ELSE total_amount END,
+            credit_amount = CASE WHEN payment_mode = 'credit' THEN total_amount ELSE 0 END,
+            payment_status = CASE WHEN payment_mode = 'credit' THEN 'CREDIT' ELSE 'PAID' END
+        WHERE paid_amount = 0 AND credit_amount = 0
+      ''');
+
+      // Recalculate supplier current_balance from existing credit transactions
+      await db.execute('''
+        UPDATE suppliers
+        SET current_balance = COALESCE((
+          SELECT SUM(credit_amount)
+          FROM transactions
+          WHERE party_id = suppliers.id
+            AND party_type = 'supplier'
+            AND transaction_type = 'BUY'
+            AND payment_status != 'PAID'
+        ), 0)
+      ''');
+
+      // Recalculate customer current_balance from existing credit transactions
+      await db.execute('''
+        UPDATE customers
+        SET current_balance = COALESCE((
+          SELECT SUM(credit_amount)
+          FROM transactions
+          WHERE party_id = customers.id
+            AND party_type = 'customer'
+            AND transaction_type = 'SELL'
+            AND payment_status != 'PAID'
+        ), 0)
+      ''');
+
+      // Add return_type and is_refundable to transaction_lines
+      final lineCols = await db.rawQuery('PRAGMA table_info(transaction_lines)');
+      if (!lineCols.any((c) => c['name'] == 'return_type')) {
+        await db.execute("ALTER TABLE transaction_lines ADD COLUMN return_type TEXT DEFAULT 'NORMAL'");
+      }
+      if (!lineCols.any((c) => c['name'] == 'is_refundable')) {
+        await db.execute('ALTER TABLE transaction_lines ADD COLUMN is_refundable INTEGER DEFAULT 1');
+      }
+
+      // Create new tables
+      final spExists = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_payments'");
+      if (spExists.isEmpty) {
+        await db.execute(DatabaseSchema.createSupplierPaymentsTable);
+        await db.execute('CREATE INDEX idx_supplier_payments_supplier ON supplier_payments(supplier_id)');
+      }
+
+      final cpExists = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='customer_payments'");
+      if (cpExists.isEmpty) {
+        await db.execute(DatabaseSchema.createCustomerPaymentsTable);
+        await db.execute('CREATE INDEX idx_customer_payments_customer ON customer_payments(customer_id)');
+      }
+
+      final dsExists = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='defective_stock'");
+      if (dsExists.isEmpty) {
+        await db.execute(DatabaseSchema.createDefectiveStockTable);
+        await db.execute('CREATE INDEX idx_defective_stock_product ON defective_stock(product_id, lot_id)');
+      }
+
+      print('Migration v8 complete!');
     }
   }
 

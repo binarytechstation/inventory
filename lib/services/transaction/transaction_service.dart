@@ -7,43 +7,62 @@ class TransactionService {
   final InvoiceSettingsService _invoiceSettingsService = InvoiceSettingsService();
   final CurrencyService _currencyService = CurrencyService();
 
-  /// Create a new transaction (BUY, SELL, or RETURN)
+  /// Create a new transaction (BUY, SELL, RETURN, CUSTOMER_RETURN, SUPPLIER_RETURN)
+  /// [paidAmount] is cash paid upfront; the remainder becomes credit.
   Future<int> createTransaction({
-    required String type, // 'BUY', 'SELL', 'RETURN'
+    required String type,
     required DateTime date,
     required int partyId,
-    required String partyType, // 'supplier' or 'customer'
+    required String partyType,
     required List<Map<String, dynamic>> items,
     required double subtotal,
     required double discount,
     required double tax,
     required double total,
-    required String paymentMode, // 'cash' or 'credit'
+    required String paymentMode, // 'cash', 'credit', 'mixed'
+    double? paidAmount,          // explicit cash portion for mixed payments
     String? notes,
     String status = 'COMPLETED',
+    // For defective returns
+    String returnType = 'NORMAL',   // 'NORMAL' or 'DEFECTIVE'
+    bool isRefundable = true,
   }) async {
     final db = await _dbHelper.database;
 
-    // Generate invoice number BEFORE starting transaction to avoid deadlock
     final invoiceNo = await _generateInvoiceNumberBeforeTransaction(type);
-
-    // Get current currency settings BEFORE starting transaction to avoid deadlock
     final currencyCode = await _currencyService.getCurrencyCode();
     final currencySymbol = await _currencyService.getCurrencySymbol();
 
-    return await db.transaction((txn) async {
+    // Resolve paid/credit amounts
+    final double resolvedPaid;
+    final double resolvedCredit;
+    final String paymentStatus;
 
-      // Get party name
+    if (paymentMode == 'cash') {
+      resolvedPaid = total;
+      resolvedCredit = 0;
+      paymentStatus = 'PAID';
+    } else if (paymentMode == 'credit') {
+      resolvedPaid = 0;
+      resolvedCredit = total;
+      paymentStatus = 'CREDIT';
+    } else {
+      // mixed
+      resolvedPaid = (paidAmount ?? 0).clamp(0, total);
+      resolvedCredit = total - resolvedPaid;
+      paymentStatus = resolvedCredit <= 0 ? 'PAID' : 'PARTIAL';
+    }
+
+    return await db.transaction((txn) async {
       String? partyName;
       if (partyType == 'customer') {
-        final customers = await txn.query('customers', where: 'id = ?', whereArgs: [partyId]);
-        partyName = customers.isNotEmpty ? customers.first['name'] as String? : null;
+        final rows = await txn.query('customers', where: 'id = ?', whereArgs: [partyId]);
+        partyName = rows.isNotEmpty ? rows.first['name'] as String? : null;
       } else {
-        final suppliers = await txn.query('suppliers', where: 'id = ?', whereArgs: [partyId]);
-        partyName = suppliers.isNotEmpty ? suppliers.first['name'] as String? : null;
+        final rows = await txn.query('suppliers', where: 'id = ?', whereArgs: [partyId]);
+        partyName = rows.isNotEmpty ? rows.first['name'] as String? : null;
       }
 
-      // Create transaction record
       final transactionId = await txn.insert('transactions', {
         'invoice_number': invoiceNo,
         'transaction_type': type,
@@ -55,7 +74,10 @@ class TransactionService {
         'discount_amount': discount,
         'tax_amount': tax,
         'total_amount': total,
+        'paid_amount': resolvedPaid,
+        'credit_amount': resolvedCredit,
         'payment_mode': paymentMode,
+        'payment_status': paymentStatus,
         'status': status,
         'notes': notes,
         'currency_code': currencyCode,
@@ -64,17 +86,17 @@ class TransactionService {
         'updated_at': DateTime.now().toIso8601String(),
       });
 
-      // Insert transaction lines and update inventory
       for (final item in items) {
-        // Get product details using lot-based schema
         final int productId = item['product_id'];
-        final int lotId = item['lot_id'] ?? 1; // Default to lot 1 if not specified
+        final int lotId = item['lot_id'] ?? 1;
 
         final products = await txn.query('products',
-          where: 'product_id = ? AND lot_id = ?',
-          whereArgs: [productId, lotId]);
+            where: 'product_id = ? AND lot_id = ?', whereArgs: [productId, lotId]);
         final productName = products.isNotEmpty ? products.first['product_name'] as String : 'Unknown';
         final productUnit = products.isNotEmpty ? products.first['unit'] as String? : 'piece';
+
+        final itemReturnType = item['return_type'] as String? ?? returnType;
+        final itemRefundable = item['is_refundable'] as bool? ?? isRefundable;
 
         await txn.insert('transaction_lines', {
           'transaction_id': transactionId,
@@ -88,104 +110,123 @@ class TransactionService {
           'discount_amount': item['discount'] ?? 0,
           'tax_amount': item['tax'] ?? 0,
           'line_total': item['subtotal'],
+          'return_type': itemReturnType,
+          'is_refundable': itemRefundable ? 1 : 0,
           'created_at': DateTime.now().toIso8601String(),
         });
 
-        // Update inventory based on transaction type
+        // Update inventory
         if (type == 'BUY') {
-          // Increase stock count for purchase
           await txn.rawUpdate('''
-            UPDATE stock
-            SET count = count + ?,
-                last_stock_update = ?,
-                updated_at = ?
+            UPDATE stock SET count = count + ?, last_stock_update = ?, updated_at = ?
             WHERE product_id = ? AND lot_id = ?
           ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'SELL') {
-          // Reduce stock count for sale
           await txn.rawUpdate('''
-            UPDATE stock
-            SET count = count - ?,
-                last_stock_update = ?,
-                updated_at = ?
+            UPDATE stock SET count = count - ?, last_stock_update = ?, updated_at = ?
             WHERE product_id = ? AND lot_id = ?
           ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'RETURN') {
           if (partyType == 'customer') {
-            // Customer return - add stock back
-            await txn.rawUpdate('''
-              UPDATE stock
-              SET count = count + ?,
-                  last_stock_update = ?,
-                  updated_at = ?
-              WHERE product_id = ? AND lot_id = ?
-            ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
+            // Customer return: normal goes back to stock, defective goes to defective_stock
+            if (itemReturnType == 'DEFECTIVE') {
+              await txn.insert('defective_stock', {
+                'product_id': productId,
+                'lot_id': lotId,
+                'product_name': productName,
+                'quantity': item['quantity'],
+                'source': 'CUSTOMER_RETURN',
+                'source_transaction_id': transactionId,
+                'party_id': partyId,
+                'party_type': 'customer',
+                'party_name': partyName,
+                'reason': item['reason'] ?? 'Customer return - defective',
+                'supplier_return_status': 'PENDING',
+                'is_refundable': itemRefundable ? 1 : 0,
+                'refund_amount': item['unit_price'] ?? 0,
+                'reported_by': null,
+                'reported_at': DateTime.now().toIso8601String(),
+                'created_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+              });
+              // Defective items do NOT go back to regular stock
+            } else {
+              // Normal return - goes back to stock
+              await txn.rawUpdate('''
+                UPDATE stock SET count = count + ?, last_stock_update = ?, updated_at = ?
+                WHERE product_id = ? AND lot_id = ?
+              ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
+            }
           } else {
-            // Supplier return - reduce stock
+            // Supplier return (we send back to supplier) - reduce our stock
             await txn.rawUpdate('''
-              UPDATE stock
-              SET count = count - ?,
-                  last_stock_update = ?,
-                  updated_at = ?
+              UPDATE stock SET count = count - ?, last_stock_update = ?, updated_at = ?
               WHERE product_id = ? AND lot_id = ?
             ''', [item['quantity'], DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
           }
         }
       }
 
-      // Update customer/supplier balance if payment mode is credit
-      if (paymentMode == 'credit') {
-        if (partyType == 'customer') {
+      // Update party balance based on credit amount
+      if (resolvedCredit > 0) {
+        if (partyType == 'customer' && type == 'SELL') {
           await txn.rawUpdate('''
-            UPDATE customers
-            SET current_balance = current_balance + ?,
-                updated_at = ?
+            UPDATE customers SET current_balance = current_balance + ?, updated_at = ?
             WHERE id = ?
-          ''', [total, DateTime.now().toIso8601String(), partyId]);
+          ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
+        } else if (partyType == 'supplier' && type == 'BUY') {
+          await txn.rawUpdate('''
+            UPDATE suppliers SET current_balance = current_balance + ?, updated_at = ?
+            WHERE id = ?
+          ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
         }
-        // For suppliers, we could track payables here if needed
+      }
+
+      // If it's a customer RETURN, reduce their balance by the refunded amount
+      if (type == 'RETURN' && partyType == 'customer') {
+        final refundCredit = resolvedCredit > 0 ? resolvedCredit : total;
+        await txn.rawUpdate('''
+          UPDATE customers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+          WHERE id = ?
+        ''', [refundCredit, DateTime.now().toIso8601String(), partyId]);
+      }
+
+      // If it's a supplier RETURN (refund from supplier), reduce our payable
+      if (type == 'RETURN' && partyType == 'supplier') {
+        await txn.rawUpdate('''
+          UPDATE suppliers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+          WHERE id = ?
+        ''', [total, DateTime.now().toIso8601String(), partyId]);
       }
 
       return transactionId;
     });
   }
 
-  /// Generate invoice number based on transaction type using invoice settings
-  /// This is called BEFORE starting a database transaction to avoid deadlock
   Future<String> _generateInvoiceNumberBeforeTransaction(String type) async {
-    // Map transaction type to invoice type used in settings
     final invoiceType = type == 'BUY' ? 'PURCHASE' : (type == 'SELL' ? 'SALE' : 'RETURN');
-
     try {
-      // Use InvoiceSettingsService to generate invoice number
       return await _invoiceSettingsService.generateInvoiceNumber(invoiceType);
     } catch (e) {
-      // Fallback to old hardcoded format if settings not found
       final db = await _dbHelper.database;
       final prefix = type == 'BUY' ? 'PO' : (type == 'SELL' ? 'INV' : 'RET');
       final year = DateTime.now().year;
-
       final result = await db.rawQuery('''
-        SELECT COUNT(*) as count
-        FROM transactions
+        SELECT COUNT(*) as count FROM transactions
         WHERE transaction_type = ? AND strftime('%Y', transaction_date) = ?
       ''', [type, year.toString()]);
-
       final count = (result.first['count'] as int?) ?? 0;
-      final number = (count + 1).toString().padLeft(5, '0');
-
-      return '$prefix-$year-$number';
+      return '$prefix-$year-${(count + 1).toString().padLeft(5, '0')}';
     }
   }
 
-
-  /// Get all transactions with filters
   Future<List<Map<String, dynamic>>> getTransactions({
     String? type,
     DateTime? startDate,
     DateTime? endDate,
     int? partyId,
     String? paymentMode,
+    String? paymentStatus,
     String sortBy = 'transaction_date',
     String sortOrder = 'DESC',
   }) async {
@@ -198,30 +239,28 @@ class TransactionService {
       whereConditions.add('transaction_type = ?');
       whereArgs.add(type);
     }
-
     if (startDate != null) {
       whereConditions.add('transaction_date >= ?');
       whereArgs.add(startDate.toIso8601String());
     }
-
     if (endDate != null) {
       whereConditions.add('transaction_date <= ?');
       whereArgs.add(endDate.toIso8601String());
     }
-
     if (partyId != null) {
       whereConditions.add('party_id = ?');
       whereArgs.add(partyId);
     }
-
     if (paymentMode != null) {
       whereConditions.add('payment_mode = ?');
       whereArgs.add(paymentMode);
     }
+    if (paymentStatus != null) {
+      whereConditions.add('payment_status = ?');
+      whereArgs.add(paymentStatus);
+    }
 
-    final whereClause = whereConditions.isNotEmpty
-        ? whereConditions.join(' AND ')
-        : null;
+    final whereClause = whereConditions.isNotEmpty ? whereConditions.join(' AND ') : null;
 
     final transactions = await db.query(
       'transactions',
@@ -230,19 +269,15 @@ class TransactionService {
       orderBy: '$sortBy $sortOrder',
     );
 
-    // Add product names for each transaction for search functionality
     final enrichedTransactions = <Map<String, dynamic>>[];
     for (final transaction in transactions) {
       final txnMap = Map<String, dynamic>.from(transaction);
-
-      // Get product names for this transaction
       final lines = await db.rawQuery('''
         SELECT GROUP_CONCAT(p.product_name, ', ') as product_names
         FROM transaction_lines tl
         LEFT JOIN products p ON tl.product_id = p.product_id AND tl.lot_id = p.lot_id
         WHERE tl.transaction_id = ?
       ''', [transaction['id']]);
-
       txnMap['product_names'] = lines.isNotEmpty ? (lines.first['product_names'] ?? '') : '';
       enrichedTransactions.add(txnMap);
     }
@@ -250,79 +285,51 @@ class TransactionService {
     return enrichedTransactions;
   }
 
-  /// Get transaction by ID with all details
   Future<Map<String, dynamic>?> getTransactionById(int id) async {
     final db = await _dbHelper.database;
-
-    final transactions = await db.query(
-      'transactions',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-
+    final transactions = await db.query('transactions', where: 'id = ?', whereArgs: [id], limit: 1);
     if (transactions.isEmpty) return null;
-
     final transaction = Map<String, dynamic>.from(transactions.first);
-
-    // Get transaction lines
-    final lines = await db.query(
-      'transaction_lines',
-      where: 'transaction_id = ?',
-      whereArgs: [id],
-    );
-
+    final lines = await db.query('transaction_lines', where: 'transaction_id = ?', whereArgs: [id]);
     transaction['lines'] = lines;
-
     return transaction;
   }
 
-  /// Get today's sales summary
   Future<Map<String, dynamic>> getTodaysSales() async {
     final db = await _dbHelper.database;
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-
     final result = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
         COALESCE(SUM(total_amount), 0) as total_sales,
-        COALESCE(SUM(CASE WHEN payment_mode = 'cash' THEN total_amount ELSE 0 END), 0) as cash_sales,
-        COALESCE(SUM(CASE WHEN payment_mode = 'credit' THEN total_amount ELSE 0 END), 0) as credit_sales
+        COALESCE(SUM(paid_amount), 0) as cash_sales,
+        COALESCE(SUM(credit_amount), 0) as credit_sales
       FROM transactions
       WHERE transaction_type = 'SELL'
-        AND transaction_date >= ?
-        AND transaction_date < ?
+        AND transaction_date >= ? AND transaction_date < ?
     ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
-
     return result.first;
   }
 
-  /// Get today's purchases summary
   Future<Map<String, dynamic>> getTodaysPurchases() async {
     final db = await _dbHelper.database;
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-
     final result = await db.rawQuery('''
-      SELECT
-        COUNT(*) as transaction_count,
-        COALESCE(SUM(total_amount), 0) as total_purchases
+      SELECT COUNT(*) as transaction_count,
+             COALESCE(SUM(total_amount), 0) as total_purchases
       FROM transactions
       WHERE transaction_type = 'BUY'
-        AND transaction_date >= ?
-        AND transaction_date < ?
+        AND transaction_date >= ? AND transaction_date < ?
     ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
-
     return result.first;
   }
 
-  /// Get sales report for date range
   Future<Map<String, dynamic>> getSalesReport(DateTime startDate, DateTime endDate) async {
     final db = await _dbHelper.database;
-
     final result = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
@@ -333,85 +340,70 @@ class TransactionService {
         COALESCE(AVG(total_amount), 0) as average_sale
       FROM transactions
       WHERE transaction_type = 'SELL'
-        AND transaction_date >= ?
-        AND transaction_date <= ?
+        AND transaction_date >= ? AND transaction_date <= ?
     ''', [startDate.toIso8601String(), endDate.toIso8601String()]);
-
     return result.first;
   }
 
-  /// Delete/Cancel a transaction
   Future<void> cancelTransaction(int transactionId) async {
     final db = await _dbHelper.database;
-
     await db.transaction((txn) async {
-      // Get transaction details
-      final transactions = await txn.query(
-        'transactions',
-        where: 'id = ?',
-        whereArgs: [transactionId],
-        limit: 1,
-      );
-
-      if (transactions.isEmpty) {
-        throw Exception('Transaction not found');
-      }
+      final transactions = await txn.query('transactions', where: 'id = ?', whereArgs: [transactionId], limit: 1);
+      if (transactions.isEmpty) throw Exception('Transaction not found');
 
       final transaction = transactions.first;
       final type = transaction['transaction_type'] as String;
+      final partyId = transaction['party_id'] as int?;
+      final partyType = transaction['party_type'] as String?;
+      final creditAmount = (transaction['credit_amount'] as num?)?.toDouble() ?? 0;
 
-      // Get transaction lines
-      final lines = await txn.query(
-        'transaction_lines',
-        where: 'transaction_id = ?',
-        whereArgs: [transactionId],
-      );
+      final lines = await txn.query('transaction_lines', where: 'transaction_id = ?', whereArgs: [transactionId]);
 
-      // Reverse inventory changes
       for (final line in lines) {
         final productId = line['product_id'] as int;
         final lotId = line['lot_id'] as int? ?? 1;
         final quantity = (line['quantity'] as num).toDouble();
 
         if (type == 'BUY') {
-          // Reverse purchase - decrease stock
           await txn.rawUpdate('''
-            UPDATE stock
-            SET count = count - ?,
-                last_stock_update = ?,
-                updated_at = ?
+            UPDATE stock SET count = count - ?, last_stock_update = ?, updated_at = ?
             WHERE product_id = ? AND lot_id = ?
           ''', [quantity, DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         } else if (type == 'SELL') {
-          // Reverse sale - add stock back
           await txn.rawUpdate('''
-            UPDATE stock
-            SET count = count + ?,
-                last_stock_update = ?,
-                updated_at = ?
+            UPDATE stock SET count = count + ?, last_stock_update = ?, updated_at = ?
             WHERE product_id = ? AND lot_id = ?
           ''', [quantity, DateTime.now().toIso8601String(), DateTime.now().toIso8601String(), productId, lotId]);
         }
       }
 
-      // Mark transaction as cancelled
-      await txn.update(
-        'transactions',
-        {'status': 'CANCELLED'},
-        where: 'id = ?',
-        whereArgs: [transactionId],
-      );
+      // Reverse balance changes
+      if (creditAmount > 0 && partyId != null) {
+        if (partyType == 'customer' && type == 'SELL') {
+          await txn.rawUpdate('''
+            UPDATE customers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+            WHERE id = ?
+          ''', [creditAmount, DateTime.now().toIso8601String(), partyId]);
+        } else if (partyType == 'supplier' && type == 'BUY') {
+          await txn.rawUpdate('''
+            UPDATE suppliers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+            WHERE id = ?
+          ''', [creditAmount, DateTime.now().toIso8601String(), partyId]);
+        }
+      }
+
+      await txn.update('transactions', {'status': 'CANCELLED'}, where: 'id = ?', whereArgs: [transactionId]);
     });
   }
 
   /// Create a purchase order with a new lot and products
-  /// This is the main method for the new lot-based system
   Future<int> createPurchaseOrderWithLot({
     required int supplierId,
     required DateTime date,
     required Map<String, dynamic> lotData,
     required List<Map<String, dynamic>> products,
     required String paymentMode,
+    double? paidAmount,
     String? notes,
     required double subtotal,
     required double discount,
@@ -419,40 +411,50 @@ class TransactionService {
     required double total,
   }) async {
     final db = await _dbHelper.database;
-
-    // Generate invoice number BEFORE starting transaction
     final invoiceNo = await _generateInvoiceNumberBeforeTransaction('BUY');
-
-    // Get current currency settings
     final currencyCode = await _currencyService.getCurrencyCode();
     final currencySymbol = await _currencyService.getCurrencySymbol();
 
-    return await db.transaction((txn) async {
-      // 1. Get or create the lot
-      int lotId;
+    final double resolvedPaid;
+    final double resolvedCredit;
+    final String paymentStatus;
 
-      // Get next lot ID
+    if (paymentMode == 'cash') {
+      resolvedPaid = total;
+      resolvedCredit = 0;
+      paymentStatus = 'PAID';
+    } else if (paymentMode == 'credit') {
+      resolvedPaid = 0;
+      resolvedCredit = total;
+      paymentStatus = 'CREDIT';
+    } else {
+      resolvedPaid = (paidAmount ?? 0).clamp(0, total);
+      resolvedCredit = total - resolvedPaid;
+      paymentStatus = resolvedCredit <= 0 ? 'PAID' : 'PARTIAL';
+    }
+
+    return await db.transaction((txn) async {
       final maxLotResult = await txn.rawQuery('SELECT COALESCE(MAX(lot_id), 0) + 1 as next_id FROM lots');
-      lotId = maxLotResult.first['next_id'] as int;
+      final lotId = maxLotResult.first['next_id'] as int;
 
       await txn.insert('lots', {
         'lot_id': lotId,
         'received_date': lotData['received_date'] ?? date.toIso8601String(),
-        'description': lotData['lot_name'] ?? 'Lot #$lotId', // Use lot_name (generated name with date+time)
+        'description': lotData['lot_name'] ?? 'Lot #$lotId',
+        'supplier_id': supplierId,
         'is_active': 1,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       });
 
-      // Get supplier name
       final suppliers = await txn.query('suppliers', where: 'id = ?', whereArgs: [supplierId]);
       final supplierName = suppliers.isNotEmpty ? suppliers.first['name'] as String? : null;
 
-      // 2. Create transaction record
       final transactionId = await txn.insert('transactions', {
         'invoice_number': invoiceNo,
         'transaction_type': 'BUY',
         'transaction_date': date.toIso8601String(),
+        'lot_id': lotId,
         'party_id': supplierId,
         'party_type': 'supplier',
         'party_name': supplierName,
@@ -460,7 +462,10 @@ class TransactionService {
         'discount_amount': discount,
         'tax_amount': tax,
         'total_amount': total,
+        'paid_amount': resolvedPaid,
+        'credit_amount': resolvedCredit,
         'payment_mode': paymentMode,
+        'payment_status': paymentStatus,
         'status': 'COMPLETED',
         'notes': notes,
         'currency_code': currencyCode,
@@ -469,45 +474,29 @@ class TransactionService {
         'updated_at': DateTime.now().toIso8601String(),
       });
 
-      // 3. Create products and transaction lines
       for (final productData in products) {
         int productId;
         final productName = productData['product_name'] as String;
 
-        // Check if this product name already exists
-        final existingProducts = await txn.query(
-          'products',
-          where: 'product_name = ? AND is_active = 1',
-          whereArgs: [productName],
-          limit: 1,
-        );
+        final existingProducts = await txn.query('products',
+            where: 'product_name = ? AND is_active = 1', whereArgs: [productName], limit: 1);
 
         if (existingProducts.isNotEmpty) {
-          // EXISTING PRODUCT: Update metadata and create new lot entry
           productId = existingProducts.first['product_id'] as int;
+          await txn.update('products', {
+            'category': productData['category'] ?? existingProducts.first['category'],
+            'product_description': productData['description'] ?? existingProducts.first['product_description'],
+            'unit': productData['unit'] ?? existingProducts.first['unit'],
+            'updated_at': DateTime.now().toIso8601String(),
+          }, where: 'product_name = ? AND is_active = 1', whereArgs: [productName]);
 
-          // Update existing product's metadata (category, description, unit)
-          await txn.update(
-            'products',
-            {
-              'category': productData['category'] ?? existingProducts.first['category'],
-              'product_description': productData['description'] ?? existingProducts.first['product_description'],
-              'unit': productData['unit'] ?? existingProducts.first['unit'],
-              'updated_at': DateTime.now().toIso8601String(),
-            },
-            where: 'product_name = ? AND is_active = 1',
-            whereArgs: [productName],
-          );
-
-          // Create new lot entry for this existing product
-          // IMPORTANT: Copy image and selling_price from existing product
           await txn.insert('products', {
             'product_id': productId,
             'lot_id': lotId,
             'product_name': productName,
             'unit_price': productData['buying_price'],
             'selling_price': productData['selling_price'] ?? existingProducts.first['selling_price'],
-            'product_image': existingProducts.first['product_image'], // Copy image from existing product
+            'product_image': existingProducts.first['product_image'],
             'unit': productData['unit'] ?? existingProducts.first['unit'],
             'category': productData['category'] ?? existingProducts.first['category'],
             'sku': productData['sku'] ?? existingProducts.first['sku'],
@@ -518,13 +507,9 @@ class TransactionService {
             'updated_at': DateTime.now().toIso8601String(),
           });
         } else {
-          // NEW PRODUCT: Generate new product_id and create entry
-          final maxProductResult = await txn.rawQuery(
-            'SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products'
-          );
+          final maxProductResult = await txn.rawQuery('SELECT COALESCE(MAX(product_id), 0) + 1 as next_id FROM products');
           productId = maxProductResult.first['next_id'] as int;
 
-          // Insert new product
           await txn.insert('products', {
             'product_id': productId,
             'lot_id': lotId,
@@ -542,7 +527,6 @@ class TransactionService {
           });
         }
 
-        // Insert stock record
         await txn.insert('stock', {
           'lot_id': lotId,
           'product_id': productId,
@@ -554,7 +538,6 @@ class TransactionService {
           'updated_at': DateTime.now().toIso8601String(),
         });
 
-        // Insert transaction line
         final lineTotal = (productData['quantity'] as double) * (productData['buying_price'] as double);
         await txn.insert('transaction_lines', {
           'transaction_id': transactionId,
@@ -568,11 +551,78 @@ class TransactionService {
           'discount_amount': 0,
           'tax_amount': 0,
           'line_total': lineTotal,
+          'return_type': 'NORMAL',
+          'is_refundable': 1,
           'created_at': DateTime.now().toIso8601String(),
         });
       }
 
+      // Update supplier balance for credit purchases
+      if (resolvedCredit > 0) {
+        await txn.rawUpdate('''
+          UPDATE suppliers SET current_balance = current_balance + ?, updated_at = ?
+          WHERE id = ?
+        ''', [resolvedCredit, DateTime.now().toIso8601String(), supplierId]);
+      }
+
       return transactionId;
     });
+  }
+
+  /// Get line items for a specific transaction
+  Future<List<Map<String, dynamic>>> getTransactionLines(int transactionId) async {
+    final db = await _dbHelper.database;
+    return await db.query(
+      'transaction_lines',
+      where: 'transaction_id = ?',
+      whereArgs: [transactionId],
+    );
+  }
+
+  /// Get credit transactions (unpaid/partial) for a party
+  Future<List<Map<String, dynamic>>> getCreditTransactions({
+    required int partyId,
+    required String partyType,
+  }) async {
+    final db = await _dbHelper.database;
+    return await db.rawQuery('''
+      SELECT * FROM transactions
+      WHERE party_id = ? AND party_type = ? AND payment_status IN ('CREDIT', 'PARTIAL')
+        AND status != 'CANCELLED'
+      ORDER BY transaction_date DESC
+    ''', [partyId, partyType]);
+  }
+
+  /// Get total outstanding balance for a party across all credit transactions
+  Future<double> getOutstandingBalance({
+    required int partyId,
+    required String partyType,
+  }) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery('''
+      SELECT COALESCE(SUM(credit_amount), 0) as total
+      FROM transactions
+      WHERE party_id = ? AND party_type = ? AND payment_status IN ('CREDIT', 'PARTIAL')
+        AND status != 'CANCELLED'
+    ''', [partyId, partyType]);
+    return (result.first['total'] as num).toDouble();
+  }
+
+  /// Mark a transaction as partially or fully paid after a payment
+  Future<void> applyPaymentToTransaction(int transactionId, double paymentAmount) async {
+    final db = await _dbHelper.database;
+    final txns = await db.query('transactions', where: 'id = ?', whereArgs: [transactionId], limit: 1);
+    if (txns.isEmpty) return;
+    final tx = txns.first;
+    final currentCredit = (tx['credit_amount'] as num).toDouble();
+    final newCredit = (currentCredit - paymentAmount).clamp(0, currentCredit);
+    final newPaid = (tx['paid_amount'] as num).toDouble() + paymentAmount;
+    final newStatus = newCredit <= 0 ? 'PAID' : 'PARTIAL';
+    await db.update('transactions', {
+      'credit_amount': newCredit,
+      'paid_amount': newPaid,
+      'payment_status': newStatus,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [transactionId]);
   }
 }

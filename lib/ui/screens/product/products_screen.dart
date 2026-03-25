@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/currency/currency_service.dart';
+import 'defective_stock_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -1852,6 +1853,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.warning_amber_rounded),
+            tooltip: 'Defective Stock',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const DefectiveStockScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadProducts,
