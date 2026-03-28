@@ -223,14 +223,22 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
   // ─── Manually report defective ────────────────────────────────────────────
 
   Future<void> _showAddDefectiveDialog() async {
-    final products = await _productService.getAllProducts();
+    // searchProducts('') returns per-lot rows with product_name, lot_id, unit_price
+    final products = await _productService.searchProducts('');
     if (!mounted) return;
 
     // Capture context-dependent values before any further async gaps
     final messenger = ScaffoldMessenger.of(context);
     final reporterId = Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
 
-    dynamic selectedProduct;
+    // Build a key→product map so the dropdown value is a plain String (avoids Map equality issues)
+    final productMap = <String, Map<String, dynamic>>{};
+    for (final p in products) {
+      final key = '${p['product_id']}_${p['lot_id']}';
+      productMap[key] = p;
+    }
+
+    String? selectedKey;
     final qtyCtrl = TextEditingController(text: '1');
     final priceCtrl = TextEditingController();
     final reasonCtrl = TextEditingController();
@@ -243,56 +251,60 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
           title: const Text('Report Defective Item'),
           content: SizedBox(
             width: 400,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<dynamic>(
-                decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()),
-                items: products.map((p) => DropdownMenuItem(
-                  value: p,
-                  child: Text('${p['product_name']} (Lot ${p['lot_id']})'),
-                )).toList(),
-                onChanged: (v) => setS(() {
-                  selectedProduct = v;
-                  if (v != null && priceCtrl.text.isEmpty) {
-                    priceCtrl.text = (v['unit_price'] ?? '0').toString();
-                  }
-                }),
-              ),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: qtyCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
-                  ),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()),
+                  initialValue: selectedKey,
+                  items: productMap.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text('${e.value['product_name']} (Lot ${e.value['lot_id']})'),
+                  )).toList(),
+                  onChanged: (key) => setS(() {
+                    selectedKey = key;
+                    final p = productMap[key];
+                    if (p != null && priceCtrl.text.isEmpty) {
+                      priceCtrl.text = (p['unit_price'] ?? '0').toString();
+                    }
+                  }),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: priceCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                        labelText: 'Refund Price', prefixText: _currencySymbol,
-                        border: const OutlineInputBorder()),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: qtyCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
+                    ),
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: priceCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                          labelText: 'Refund Price', prefixText: _currencySymbol,
+                          border: const OutlineInputBorder()),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: 'Source', border: OutlineInputBorder()),
+                  initialValue: source,
+                  items: const [
+                    DropdownMenuItem(value: 'INTERNAL', child: Text('Internal Discovery')),
+                    DropdownMenuItem(value: 'CUSTOMER_RETURN', child: Text('Customer Return')),
+                  ],
+                  onChanged: (v) => setS(() => source = v ?? 'INTERNAL'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(labelText: 'Reason / Description', border: OutlineInputBorder()),
                 ),
               ]),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Source', border: OutlineInputBorder()),
-                initialValue: source,
-                items: const [
-                  DropdownMenuItem(value: 'INTERNAL', child: Text('Internal Discovery')),
-                  DropdownMenuItem(value: 'CUSTOMER_RETURN', child: Text('Customer Return')),
-                ],
-                onChanged: (v) => setS(() => source = v ?? 'INTERNAL'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reasonCtrl,
-                decoration: const InputDecoration(labelText: 'Reason / Description', border: OutlineInputBorder()),
-              ),
-            ]),
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -302,6 +314,7 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
       ),
     );
 
+    final selectedProduct = productMap[selectedKey];
     if (confirm != true || selectedProduct == null) return;
     try {
       await _service.addDefectiveStock(DefectiveStockModel(

@@ -23,7 +23,8 @@
       "Bash(do file=/Users/jit/inventory/lib/ui/screens/$screen/$screen_screen.dart if [ -f $file ])",
       "Bash(then echo '=== $screen ===' grep -A 5 'void initState' $file)",
       "Bash(hdiutil create:*)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(\"C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\ISCC.exe\" \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss\")"
     ],
     "deny": [],
     "ask": []

@@ -482,7 +482,7 @@ class ProductService {
   Future<List<String>> getAllCategories() async {
     final db = await _dbHelper.database;
     final result = await db.rawQuery(
-      'SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != "" ORDER BY category',
+      "SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != '' ORDER BY category",
     );
     return result.map((row) => row['category'] as String).toList();
   }
