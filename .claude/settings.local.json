@@ -24,7 +24,8 @@
       "Bash(then echo '=== $screen ===' grep -A 5 'void initState' $file)",
       "Bash(hdiutil create:*)",
       "Bash(printf:*)",
-      "Bash(\"C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\ISCC.exe\" \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss\")"
+      "Bash(\"C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\ISCC.exe\" \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss\")",
+      "Bash(explorer \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\Output\")"
     ],
     "deny": [],
     "ask": []

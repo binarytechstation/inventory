@@ -1,4 +1,13 @@
 class DatabaseSchema {
+  // Categories table (standalone catalog of product categories)
+  static const String createCategoriesTable = '''
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL
+    )
+  ''';
   // Users table
   static const String createUsersTable = '''
     CREATE TABLE users (

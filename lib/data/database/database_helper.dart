@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 8,
+      version: 9,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -100,7 +100,8 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_product_master_name ON product_master(product_name)');
     await db.execute('CREATE INDEX idx_product_master_active ON product_master(is_active)');
 
-    // New tables (v8)
+    // New tables (v8 + v9)
+    await db.execute(DatabaseSchema.createCategoriesTable);
     await db.execute(DatabaseSchema.createSupplierPaymentsTable);
     await db.execute(DatabaseSchema.createCustomerPaymentsTable);
     await db.execute(DatabaseSchema.createDefectiveStockTable);
@@ -538,6 +539,19 @@ class DatabaseHelper {
       }
 
       print('Migration v8 complete!');
+    }
+
+    if (oldVersion < 9) {
+      print('Migrating to v9: standalone categories table...');
+      await db.execute(DatabaseSchema.createCategoriesTable);
+      // Seed existing distinct product categories into the new table
+      await db.execute('''
+        INSERT OR IGNORE INTO categories (name, created_at)
+        SELECT DISTINCT category, datetime('now')
+        FROM products
+        WHERE category IS NOT NULL AND category != ''
+      ''');
+      print('Migration v9 complete!');
     }
   }
 

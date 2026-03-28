@@ -426,29 +426,33 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
     final statusColor = status == 'PAID' ? Colors.green : (status == 'PARTIAL' ? Colors.orange : Colors.red);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.secondaryContainer,
-          child: Icon(Icons.receipt, color: theme.colorScheme.secondary, size: 20),
-        ),
-        title: Text(tx['invoice_number'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_formatDate(DateTime.tryParse(tx['transaction_date'] as String? ?? '') ?? DateTime.now())),
-          if (credit > 0)
-            Text('Credit: ৳${credit.toStringAsFixed(2)}', style: TextStyle(color: Colors.orange.shade700)),
-        ]),
-        trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('৳${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-            ),
-            child: Text(status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w600)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showInvoiceDetailDialog(tx),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: theme.colorScheme.secondaryContainer,
+            child: Icon(Icons.receipt, color: theme.colorScheme.secondary, size: 20),
           ),
-        ]),
+          title: Text(tx['invoice_number'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_formatDate(DateTime.tryParse(tx['transaction_date'] as String? ?? '') ?? DateTime.now())),
+            if (credit > 0)
+              Text('Credit: ৳${credit.toStringAsFixed(2)}', style: TextStyle(color: Colors.orange.shade700)),
+          ]),
+          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('৳${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+              ),
+              child: Text(status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -458,12 +462,417 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
     return Card(
       color: Colors.orange.shade50,
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.pending_actions, color: Colors.orange),
-        title: Text(tx['invoice_number'] as String? ?? ''),
-        subtitle: Text(_formatDate(DateTime.tryParse(tx['transaction_date'] as String? ?? '') ?? DateTime.now())),
-        trailing: Text('৳${credit.toStringAsFixed(2)}',
-            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showInvoiceDetailDialog(tx),
+        child: ListTile(
+          leading: const Icon(Icons.pending_actions, color: Colors.orange),
+          title: Text(
+            tx['invoice_number'] as String? ?? '',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(_formatDate(DateTime.tryParse(tx['transaction_date'] as String? ?? '') ?? DateTime.now())),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('৳${credit.toStringAsFixed(2)}',
+                  style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, color: Colors.orange.shade400, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showInvoiceDetailDialog(Map<String, dynamic> txSummary) async {
+    // Show loading while fetching full details
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    Map<String, dynamic>? tx;
+    try {
+      tx = await _txService.getTransactionById(txSummary['id'] as int);
+    } catch (_) {}
+
+    if (!mounted) return;
+    Navigator.pop(context); // dismiss loader
+
+    if (tx == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Could not load invoice details')));
+      return;
+    }
+
+    final lines = (tx['lines'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final invoiceNo = tx['invoice_number'] as String? ?? '';
+    final date = DateTime.tryParse(tx['transaction_date'] as String? ?? '') ?? DateTime.now();
+    final subtotal = (tx['subtotal'] as num?)?.toDouble() ?? 0.0;
+    final discount = (tx['discount_amount'] as num?)?.toDouble() ?? 0.0;
+    final tax = (tx['tax_amount'] as num?)?.toDouble() ?? 0.0;
+    final total = (tx['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final paid = (tx['paid_amount'] as num?)?.toDouble() ?? 0.0;
+    final outstanding = (tx['credit_amount'] as num?)?.toDouble() ?? 0.0;
+    final status = tx['payment_status'] as String? ?? 'PAID';
+    final notes = tx['notes'] as String?;
+    final currency = tx['currency_symbol'] as String? ?? '৳';
+    final paymentMode = (tx['payment_mode'] as String? ?? '').toUpperCase();
+
+    final statusColor = status == 'PAID'
+        ? Colors.green
+        : (status == 'PARTIAL' ? Colors.orange : Colors.red);
+    final statusLabel = status == 'CREDIT' ? 'UNPAID' : status;
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 680,
+          constraints: const BoxConstraints(maxHeight: 700),
+          child: Column(
+            children: [
+              // ── Header ──
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [Colors.blue.shade700, Colors.blue.shade500]),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.receipt_long, color: Colors.white, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(invoiceNo,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17)),
+                          Text(_formatDate(date),
+                              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Body ──
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Customer + payment mode
+                      Row(
+                        children: [
+                          Expanded(child: _infoChip(Icons.person_outline, 'Customer', _customer?.name ?? 'N/A')),
+                          const SizedBox(width: 12),
+                          Expanded(child: _infoChip(Icons.payment, 'Payment Mode', paymentMode)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Items table header
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(8),
+                            topRight: Radius.circular(8),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                                flex: 4,
+                                child: Text('Product',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue))),
+                            SizedBox(
+                                width: 60,
+                                child: Text('Qty',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue))),
+                            SizedBox(width: 8),
+                            SizedBox(
+                                width: 90,
+                                child: Text('Unit Price',
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue))),
+                            SizedBox(width: 8),
+                            SizedBox(
+                                width: 90,
+                                child: Text('Amount',
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue))),
+                          ],
+                        ),
+                      ),
+
+                      // Line items
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.blue.shade100),
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(8),
+                            bottomRight: Radius.circular(8),
+                          ),
+                        ),
+                        child: lines.isEmpty
+                            ? const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                  child: Text('No items', style: TextStyle(color: Colors.grey)),
+                                ),
+                              )
+                            : Column(
+                                children: lines.asMap().entries.map((entry) {
+                                  final i = entry.key;
+                                  final line = entry.value;
+                                  final name = line['product_name'] as String? ?? '';
+                                  final qty = (line['quantity'] as num?)?.toDouble() ?? 0;
+                                  final unit = line['unit'] as String? ?? '';
+                                  final unitPrice = (line['unit_price'] as num?)?.toDouble() ?? 0;
+                                  final lineTotal = (line['line_total'] as num?)?.toDouble() ?? 0;
+                                  final isEven = i % 2 == 0;
+                                  return Container(
+                                    color: isEven ? Colors.grey.shade50 : Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 4,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(name,
+                                                  style: const TextStyle(
+                                                      fontWeight: FontWeight.w500, fontSize: 13)),
+                                              if (unit.isNotEmpty)
+                                                Text(unit,
+                                                    style: const TextStyle(
+                                                        color: Colors.grey, fontSize: 11)),
+                                            ],
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 60,
+                                          child: Text(
+                                            qty % 1 == 0
+                                                ? qty.toInt().toString()
+                                                : qty.toStringAsFixed(2),
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 90,
+                                          child: Text(
+                                            '$currency${unitPrice.toStringAsFixed(2)}',
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 90,
+                                          child: Text(
+                                            '$currency${lineTotal.toStringAsFixed(2)}',
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600, fontSize: 13),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Totals summary
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          children: [
+                            if (subtotal > 0 && subtotal != total)
+                              _summaryRow('Subtotal', '$currency${subtotal.toStringAsFixed(2)}'),
+                            if (discount > 0)
+                              _summaryRow('Discount', '− $currency${discount.toStringAsFixed(2)}',
+                                  color: Colors.green.shade700),
+                            if (tax > 0)
+                              _summaryRow('Tax', '+ $currency${tax.toStringAsFixed(2)}',
+                                  color: Colors.orange.shade700),
+                            _summaryRow('Total', '$currency${total.toStringAsFixed(2)}',
+                                bold: true, large: true),
+                            const Divider(height: 14),
+                            _summaryRow('Paid', '$currency${paid.toStringAsFixed(2)}',
+                                color: Colors.green.shade700),
+                            if (outstanding > 0)
+                              _summaryRow('Outstanding', '$currency${outstanding.toStringAsFixed(2)}',
+                                  color: Colors.red.shade700, bold: true),
+                          ],
+                        ),
+                      ),
+
+                      // Notes
+                      if (notes != null && notes.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.notes, size: 15, color: Colors.grey),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(notes,
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Footer actions ──
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Close'),
+                    ),
+                    if (outstanding > 0) ...[
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showCollectPaymentDialog();
+                        },
+                        icon: const Icon(Icons.payment, size: 16),
+                        label: const Text('Collect Payment'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                Text(value,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value,
+      {Color? color, bool bold = false, bool large = false}) {
+    final fontSize = large ? 15.0 : 13.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: fontSize, color: color ?? Colors.grey.shade700)),
+          ),
+          Text(value,
+              style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+                  color: color)),
+        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../../data/models/customer_model.dart';
 import '../../../services/currency/currency_service.dart';
@@ -9,6 +10,7 @@ import '../../../services/customer/customer_service.dart';
 import '../../../services/invoice/invoice_service.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/transaction/transaction_service.dart';
+import '../../providers/auth_provider.dart';
 
 class POSScreen extends StatefulWidget {
   const POSScreen({super.key});
@@ -177,6 +179,14 @@ class _POSScreenState extends State<POSScreen> {
         ? (lots.first['product_image'] as String?)
         : null;
 
+    // Calculate total available stock across all lots
+    final double totalAvailableStock = lots.fold(0.0,
+        (sum, lot) => sum + ((lot['available_stock'] as num?)?.toDouble() ?? 0.0));
+    final String productUnit = lots.isNotEmpty ? (lots.first['unit'] as String? ?? 'piece') : 'piece';
+    final String totalStockLabel = totalAvailableStock % 1 == 0
+        ? '${totalAvailableStock.toInt()} $productUnit'
+        : '${totalAvailableStock.toStringAsFixed(2)} $productUnit';
+
     // Initialize controllers with SELLING PRICE (not unit_price)
     for (final lot in lots) {
       final lotId = lot['lot_id'] as int;
@@ -189,6 +199,10 @@ class _POSScreenState extends State<POSScreen> {
       );
       selectedLots[lotId] = false;
     }
+
+    // Only Admin can see purchase/cost prices
+    final bool isAdmin = Provider.of<AuthProvider>(context, listen: false)
+        .currentUser?.role == 'Admin';
 
     await showDialog(
       context: context,
@@ -228,15 +242,52 @@ class _POSScreenState extends State<POSScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${lots.length} lot(s) available',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.grey[400]
-                              : Colors.grey[600],
-                          fontWeight: FontWeight.normal,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            '${lots.length} lot(s)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                              fontWeight: FontWeight.normal,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: totalAvailableStock > 0
+                                  ? Colors.green.shade100
+                                  : Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.inventory_2,
+                                  size: 12,
+                                  color: totalAvailableStock > 0
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Total: $totalStockLabel',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: totalAvailableStock > 0
+                                        ? Colors.green.shade700
+                                        : Colors.red.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -415,26 +466,28 @@ class _POSScreenState extends State<POSScreen> {
                                       const SizedBox(height: 4),
                                       Row(
                                         children: [
-                                          Expanded(
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  Icons.shopping_cart,
-                                                  size: 14,
-                                                  color: Colors.grey[600],
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'Purchase: $_currencySymbol${unitPrice.toStringAsFixed(2)}',
-                                                  style: TextStyle(
-                                                    color: Colors.grey[700],
-                                                    fontSize: 12,
+                                          if (isAdmin) ...[
+                                            Expanded(
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.shopping_cart,
+                                                    size: 14,
+                                                    color: Colors.grey[600],
                                                   ),
-                                                ),
-                                              ],
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Purchase: $_currencySymbol${unitPrice.toStringAsFixed(2)}',
+                                                    style: TextStyle(
+                                                      color: Colors.grey[700],
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
+                                            const SizedBox(width: 8),
+                                          ],
                                           Expanded(
                                             child: Row(
                                               children: [
@@ -500,51 +553,53 @@ class _POSScreenState extends State<POSScreen> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Purchase Price (Read-only)
-                                  Expanded(
-                                    child: TextField(
-                                      controller: TextEditingController(
-                                        text: unitPrice.toStringAsFixed(2),
-                                      ),
-                                      decoration: InputDecoration(
-                                        labelText: 'Purchase Price',
-                                        labelStyle: TextStyle(
-                                          color: isDark ? Colors.grey[400] : null,
+                                  if (isAdmin) ...[
+                                    const SizedBox(width: 8),
+                                    // Purchase Price (Read-only — Admin only)
+                                    Expanded(
+                                      child: TextField(
+                                        controller: TextEditingController(
+                                          text: unitPrice.toStringAsFixed(2),
                                         ),
-                                        border: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                                        decoration: InputDecoration(
+                                          labelText: 'Purchase Price',
+                                          labelStyle: TextStyle(
+                                            color: isDark ? Colors.grey[400] : null,
                                           ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
+                                          border: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
                                             ),
-                                        prefixText: _currencySymbol,
-                                        filled: true,
-                                        fillColor: isDark
-                                            ? const Color(0xFF334155)
-                                            : Colors.grey.shade100,
-                                        prefixIcon: Icon(
-                                          Icons.shopping_cart,
-                                          size: 20,
-                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                                            ),
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 8,
+                                              ),
+                                          prefixText: _currencySymbol,
+                                          filled: true,
+                                          fillColor: isDark
+                                              ? const Color(0xFF334155)
+                                              : Colors.grey.shade100,
+                                          prefixIcon: Icon(
+                                            Icons.shopping_cart,
+                                            size: 20,
+                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                          ),
                                         ),
-                                      ),
-                                      enabled: false,
-                                      style: TextStyle(
-                                        color: isDark ? Colors.white : Colors.grey.shade700,
-                                        fontWeight: FontWeight.w600,
+                                        enabled: false,
+                                        style: TextStyle(
+                                          color: isDark ? Colors.white : Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                   const SizedBox(width: 8),
                                   // Selling Price (Editable)
                                   Expanded(
@@ -1116,11 +1171,43 @@ class _POSScreenState extends State<POSScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Point of Sale'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.point_of_sale, size: 20),
+            ),
+            const SizedBox(width: 10),
+            const Text('Point of Sale', style: TextStyle(fontWeight: FontWeight.bold)),
+            if (_cart.isNotEmpty) ...[
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.shopping_cart_rounded, size: 13, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text('${_cart.length}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadInitialData,
+            tooltip: 'Refresh',
           ),
         ],
       ),
@@ -1604,78 +1691,89 @@ class _POSScreenState extends State<POSScreen> {
       children: [
         // Customer selection
         Container(
-          padding: const EdgeInsets.all(16),
-          color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            border: Border(bottom: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade200)),
+          ),
+          child: Row(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Customer',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _showAddCustomerDialog,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Customer'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+              // Customer selector
+              Expanded(
+                child: InkWell(
+                  onTap: () => _showCustomerSelectionDialog(),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: _selectedCustomer != null
+                          ? LinearGradient(colors: [Colors.green.shade50, Colors.green.shade100])
+                          : null,
+                      color: _selectedCustomer == null
+                          ? (isDark ? const Color(0xFF334155) : Colors.grey.shade100)
+                          : null,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _selectedCustomer != null
+                            ? Colors.green.shade300
+                            : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
                       ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => _showCustomerSelectionDialog(),
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    color: isDark ? const Color(0xFF334155) : Colors.white,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.person,
-                        color: isDark ? Colors.grey[400] : Colors.grey,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _selectedCustomer?.name ?? 'Select customer',
-                          style: TextStyle(
-                            color: _selectedCustomer == null
-                                ? (isDark ? Colors.grey[400] : Colors.grey[600])
-                                : (isDark ? Colors.white : Colors.black),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: _selectedCustomer != null
+                              ? Colors.green.shade600
+                              : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+                          child: Text(
+                            _selectedCustomer != null
+                                ? _selectedCustomer!.name.substring(0, 1).toUpperCase()
+                                : '?',
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      Icon(
-                        Icons.arrow_drop_down,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedCustomer?.name ?? 'Walk-in Customer',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: _selectedCustomer != null
+                                      ? (isDark ? Colors.white : Colors.black)
+                                      : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (_selectedCustomer != null && _selectedCustomer!.phone != null)
+                                Text(_selectedCustomer!.phone!,
+                                    style: TextStyle(fontSize: 11, color: Colors.green.shade700)),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.expand_more, size: 18,
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                      ],
+                    ),
                   ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Add customer button
+              InkWell(
+                onTap: _showAddCustomerDialog,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.person_add_outlined, color: Colors.white, size: 20),
                 ),
               ),
             ],
@@ -2272,229 +2370,6 @@ class _POSScreenState extends State<POSScreen> {
     );
   }
 
-  Widget _buildCustomerSection() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
-              : [Colors.blue.shade50, Colors.white],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
-            width: 2,
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.blue.shade900.withValues(alpha: 0.3)
-                          : Colors.blue.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.person_outline,
-                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Customer',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: _showAddCustomerDialog,
-                icon: const Icon(Icons.person_add, size: 18),
-                label: const Text('New'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 2,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF334155) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _selectedCustomer == null
-                    ? (isDark ? Colors.red.shade700 : Colors.red.shade200)
-                    : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
-                width: _selectedCustomer == null ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: DropdownButtonFormField<CustomerModel>(
-              initialValue: _selectedCustomer,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: isDark ? const Color(0xFF334155) : Colors.white,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                prefixIcon: Icon(
-                  Icons.person,
-                  color: _selectedCustomer == null
-                      ? (isDark ? Colors.red.shade300 : Colors.red.shade400)
-                      : (isDark ? Colors.blue.shade300 : Colors.blue.shade600),
-                ),
-                hintText: 'Select a customer *',
-                hintStyle: TextStyle(
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
-                ),
-              ),
-              isExpanded: true,
-              dropdownColor: isDark ? const Color(0xFF334155) : Colors.white,
-              items: _customers.map((customer) {
-                return DropdownMenuItem(
-                  value: customer,
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.blue.shade900.withValues(alpha: 0.3)
-                              : Colors.blue.shade50,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.account_circle,
-                          size: 20,
-                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              customer.name,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: isDark ? Colors.white : Colors.black,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (customer.phone != null &&
-                                customer.phone!.isNotEmpty)
-                              Text(
-                                customer.phone!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedCustomer = value;
-                });
-              },
-              icon: Icon(
-                Icons.arrow_drop_down,
-                color: isDark ? Colors.grey.shade300 : Colors.grey.shade600,
-              ),
-            ),
-          ),
-          if (_selectedCustomer != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.green.shade900.withValues(alpha: 0.3)
-                      : Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isDark ? Colors.green.shade700 : Colors.green.shade200,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: isDark ? Colors.green.shade300 : Colors.green.shade700,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Selected: ${_selectedCustomer!.name}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.green.shade200 : Colors.green.shade800,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    if (_selectedCustomer!.phone != null)
-                      Text(
-                        _selectedCustomer!.phone!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
   //   Widget _buildCheckoutSection() {
   //     final subtotal = _calculateSubtotal();
   //     final discount = _calculateDiscount();

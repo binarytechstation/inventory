@@ -1,9 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/currency/currency_service.dart';
+import '../../providers/auth_provider.dart';
 import 'defective_stock_screen.dart';
+import 'product_form_screen.dart';
+import '../transaction/purchase_order_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -152,6 +156,71 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
         );
+      }
+    }
+  }
+
+  Future<void> _showAddCategoryDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.category, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Add Category'),
+          ],
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Category Name',
+            hintText: 'e.g. Electronics, Clothing...',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.label_outline),
+          ),
+          onSubmitted: (val) {
+            if (val.trim().isNotEmpty) Navigator.pop(ctx, val.trim());
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) Navigator.pop(ctx, name);
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (result != null && mounted) {
+      try {
+        await _productService.addCategory(result);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Category "$result" added'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error adding category: $e')),
+          );
+        }
       }
     }
   }
@@ -506,7 +575,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                       child: OutlinedButton.icon(
                                         onPressed: () {
                                           Navigator.pop(context); // Close details dialog first
-                                          _deleteLot(lot['product_id'] as int, lot['lot_id'] as int, serialNumber);
+                                          _deleteLot(lot['product_id'] as int, lot['lot_id'] as int, serialNumber, closeDialog: false);
                                         },
                                         icon: const Icon(Icons.delete_outline),
                                         label: const Text('Delete This Lot'),
@@ -1342,7 +1411,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
-  Future<void> _deleteLot(int productId, int lotId, int serialNumber) async {
+  Future<void> _deleteLot(int productId, int lotId, int serialNumber, {bool closeDialog = true}) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -1396,7 +1465,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Lot #$serialNumber deleted successfully')),
           );
-          Navigator.pop(context); // Close the edit dialog
+          if (closeDialog) Navigator.pop(context);
           _loadProducts();
         }
       } catch (e) {
@@ -1865,6 +1934,57 @@ class _ProductsScreenState extends State<ProductsScreen> {
             tooltip: 'Refresh',
           ),
         ],
+      ),
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, auth, _) {
+          final canCreateProduct = auth.currentUser?.hasPermission('create_product') ?? false;
+          final canCreatePurchase = auth.currentUser?.hasPermission('create_purchase') ?? false;
+
+          final buttons = <Widget>[];
+
+          if (canCreatePurchase) {
+            buttons.add(FloatingActionButton.extended(
+              heroTag: 'fab_purchase',
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const PurchaseOrderScreen())),
+              icon: const Icon(Icons.shopping_cart_outlined),
+              label: const Text('Purchase Product'),
+              backgroundColor: Colors.green.shade600,
+              foregroundColor: Colors.white,
+            ));
+          }
+
+          if (canCreateProduct) {
+            if (buttons.isNotEmpty) buttons.add(const SizedBox(height: 10));
+            buttons.add(FloatingActionButton.extended(
+              heroTag: 'fab_category',
+              onPressed: _showAddCategoryDialog,
+              icon: const Icon(Icons.category_outlined),
+              label: const Text('Add Category'),
+              backgroundColor: Colors.orange.shade600,
+              foregroundColor: Colors.white,
+            ));
+            buttons.add(const SizedBox(height: 10));
+            buttons.add(FloatingActionButton.extended(
+              heroTag: 'fab_add_product',
+              onPressed: () async {
+                final result = await Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ProductFormScreen()));
+                if (result == true) _loadProducts();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Product'),
+            ));
+          }
+
+          if (buttons.isEmpty) return const SizedBox.shrink();
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: buttons,
+          );
+        },
       ),
       body: Column(
         children: [

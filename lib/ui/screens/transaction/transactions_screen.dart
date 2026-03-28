@@ -532,6 +532,20 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
                 _buildDetailRow('Discount', '$_currencySymbol${(transaction['discount_amount'] as num).toStringAsFixed(2)}'),
                 _buildDetailRow('Tax', '$_currencySymbol${(transaction['tax_amount'] as num).toStringAsFixed(2)}'),
                 _buildDetailRow('Total', '$_currencySymbol${(transaction['total_amount'] as num).toStringAsFixed(2)}', bold: true),
+                const Divider(height: 12),
+                _buildDetailRow(
+                  'Paid',
+                  '$_currencySymbol${((transaction['paid_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                  valueColor: Colors.green.shade700,
+                  bold: true,
+                ),
+                if (((transaction['credit_amount'] as num?)?.toDouble() ?? 0) > 0)
+                  _buildDetailRow(
+                    'Due',
+                    '$_currencySymbol${((transaction['credit_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                    valueColor: Colors.red.shade700,
+                    bold: true,
+                  ),
                 if (transaction['notes'] != null && (transaction['notes'] as String).isNotEmpty) ...[
                   const Divider(),
                   const Text('Notes:', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -680,7 +694,7 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
     }
   }
 
-  Widget _buildDetailRow(String label, String value, {bool bold = false}) {
+  Widget _buildDetailRow(String label, String value, {bool bold = false, Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -696,7 +710,10 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal),
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+                color: valueColor,
+              ),
             ),
           ),
         ],

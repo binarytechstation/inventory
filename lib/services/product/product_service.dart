@@ -1,3 +1,4 @@
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/lot_model.dart';
 import '../../data/models/product_lot_model.dart';
@@ -478,13 +479,33 @@ class ProductService {
     return (result.first['stock'] as num?)?.toDouble() ?? 0.0;
   }
 
-  // Get all categories
+  // Get all categories (union of product categories + standalone category catalog)
   Future<List<String>> getAllCategories() async {
     final db = await _dbHelper.database;
-    final result = await db.rawQuery(
-      "SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != '' ORDER BY category",
+    final result = await db.rawQuery('''
+      SELECT name FROM categories
+      UNION
+      SELECT DISTINCT category AS name FROM products
+        WHERE category IS NOT NULL AND category != ''
+      ORDER BY name ASC
+    ''');
+    return result.map((row) => row['name'] as String).toList();
+  }
+
+  // Add a standalone category to the catalog
+  Future<void> addCategory(String name) async {
+    final db = await _dbHelper.database;
+    await db.insert(
+      'categories',
+      {'name': name.trim(), 'created_at': DateTime.now().toIso8601String()},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
     );
-    return result.map((row) => row['category'] as String).toList();
+  }
+
+  // Delete a standalone category from the catalog
+  Future<void> deleteCategory(String name) async {
+    final db = await _dbHelper.database;
+    await db.delete('categories', where: 'name = ?', whereArgs: [name]);
   }
 
   // Get product master catalog (for quick selection)
@@ -838,15 +859,20 @@ class ProductService {
   }
 
   /// Get products grouped by category
-  Future<Map<String, List<Map<String, dynamic>>>>
-  getProductsGroupedByCategory() async {
-    final products = await getAllProducts();
+  Future<Map<String, List<Map<String, dynamic>>>> getProductsGroupedByCategory() async {
     final Map<String, List<Map<String, dynamic>>> grouped = {};
 
+    // Seed with every known category (includes empty ones from the categories table)
+    final allCategories = await getAllCategories();
+    for (final cat in allCategories) {
+      grouped[cat] = [];
+    }
+
+    // Fill in the products
+    final products = await getAllProducts();
     for (var product in products) {
       final productMap = product as Map<String, dynamic>;
       final category = (productMap['category'] as String?) ?? 'Uncategorized';
-
       if (!grouped.containsKey(category)) {
         grouped[category] = [];
       }
