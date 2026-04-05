@@ -478,6 +478,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       value: '$_currencySymbol${(_todaysSales!['cash_collected'] as num).toStringAsFixed(2)}',
                       color: Colors.green.shade700,
                     ),
+                    if (((_todaysSales!['cash_refunded_today'] ?? 0) as num) > 0)
+                      (
+                        label: 'Cash Refunded',
+                        value: '-$_currencySymbol${((_todaysSales!['cash_refunded_today'] ?? 0) as num).toStringAsFixed(2)}',
+                        color: Colors.red.shade600,
+                      ),
                     (
                       label: 'Credit (Due)',
                       value: '$_currencySymbol${(_todaysSales!['credit_sales'] as num).toStringAsFixed(2)}',

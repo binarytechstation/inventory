@@ -2394,6 +2394,11 @@ class _ProductsScreenState extends State<ProductsScreen>
 
   Widget _buildEnhancedViewToggleButton(String label, IconData icon, String mode) {
     final isActive = _viewMode == mode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final inactiveBg = isDark ? Colors.grey[800]! : Colors.grey[100]!;
+    final inactiveBorder = isDark ? Colors.grey[600]! : Colors.grey[300]!;
+    final inactiveContent = isDark ? Colors.grey[300]! : Colors.grey[700]!;
 
     return Material(
       color: Colors.transparent,
@@ -2407,10 +2412,10 @@ class _ProductsScreenState extends State<ProductsScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: isActive ? Theme.of(context).primaryColor : Colors.grey[100],
+            color: isActive ? Theme.of(context).primaryColor : inactiveBg,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isActive ? Theme.of(context).primaryColor : Colors.grey[300]!,
+              color: isActive ? Theme.of(context).primaryColor : inactiveBorder,
               width: 1.5,
             ),
             boxShadow: isActive
@@ -2430,13 +2435,13 @@ class _ProductsScreenState extends State<ProductsScreen>
               Icon(
                 icon,
                 size: 20,
-                color: isActive ? Colors.white : Colors.grey[700],
+                color: isActive ? Colors.white : inactiveContent,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: isActive ? Colors.white : Colors.grey[700],
+                  color: isActive ? Colors.white : inactiveContent,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                   fontSize: 14,
                 ),

@@ -329,11 +329,24 @@ class TransactionService {
       WHERE payment_date >= ? AND payment_date < ?
     ''', [start, end]);
 
+    // Customer cash refunds paid out today
+    final refundResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(paid_amount), 0) as cash_refunded
+      FROM transactions
+      WHERE transaction_type = 'RETURN'
+        AND party_type = 'customer'
+        AND payment_mode = 'cash'
+        AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date < ?
+    ''', [start, end]);
+
     final row = Map<String, dynamic>.from(salesResult.first);
     final creditCleared = (clearedResult.first['credit_cleared'] as num?)?.toDouble() ?? 0.0;
     final cashSales = (row['cash_sales'] as num?)?.toDouble() ?? 0.0;
+    final cashRefunded = (refundResult.first['cash_refunded'] as num?)?.toDouble() ?? 0.0;
     row['credit_cleared_today'] = creditCleared;
-    row['cash_collected'] = cashSales + creditCleared;
+    row['cash_refunded_today'] = cashRefunded;
+    row['cash_collected'] = cashSales + creditCleared - cashRefunded;
     return row;
   }
 

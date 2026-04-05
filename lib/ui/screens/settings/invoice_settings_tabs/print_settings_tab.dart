@@ -57,10 +57,6 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
   // Thermal Settings
   bool _enableThermalPrint = false;
 
-  // QR/Barcode Settings
-  bool _enableQrCode = false;
-  bool _enableBarcode = false;
-  String _barcodeType = 'CODE128';
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -183,12 +179,6 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
           final thermalLineSpacing = settings['thermal_line_spacing'];
           _thermalLineSpacingController.text = (thermalLineSpacing is num ? thermalLineSpacing.toDouble() : 1.5).toString();
 
-          // QR/Barcode
-          _enableQrCode = (settings['enable_qr_code'] as int? ?? 0) == 1;
-          _enableBarcode = (settings['enable_barcode'] as int? ?? 0) == 1;
-
-          final barcodeTypeValue = settings['barcode_type'] as String? ?? 'CODE128';
-          _barcodeType = ['CODE128', 'EAN13', 'QR'].contains(barcodeTypeValue) ? barcodeTypeValue : 'CODE128';
         });
       }
     } catch (e) {
@@ -253,10 +243,6 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
         'thermal_width': safeParseInt(_thermalWidthController.text, 80),
         'thermal_font_size': safeParseInt(_thermalFontSizeController.text, 12),
         'thermal_line_spacing': safeParseDouble(_thermalLineSpacingController.text, 1.5),
-        // QR/Barcode
-        'enable_qr_code': _enableQrCode ? 1 : 0,
-        'enable_barcode': _enableBarcode ? 1 : 0,
-        'barcode_type': _barcodeType,
       });
 
       if (mounted) {
@@ -839,48 +825,6 @@ class _PrintSettingsTabState extends State<PrintSettingsTab> {
           ),
           const SizedBox(height: 16),
 
-          // QR Code & Barcode Settings
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('QR Code & Barcode', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    title: const Text('Enable QR Code'),
-                    subtitle: const Text('Display QR code on invoice'),
-                    value: _enableQrCode,
-                    onChanged: (v) => setState(() => _enableQrCode = v),
-                  ),
-                  const Divider(),
-                  SwitchListTile(
-                    title: const Text('Enable Barcode'),
-                    subtitle: const Text('Display barcode on invoice'),
-                    value: _enableBarcode,
-                    onChanged: (v) => setState(() => _enableBarcode = v),
-                  ),
-                  if (_enableBarcode) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _barcodeType,
-                      decoration: const InputDecoration(
-                        labelText: 'Barcode Type',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'CODE128', child: Text('CODE 128')),
-                        DropdownMenuItem(value: 'EAN13', child: Text('EAN-13')),
-                        DropdownMenuItem(value: 'QR', child: Text('QR Code')),
-                      ],
-                      onChanged: (v) => setState(() => _barcodeType = v!),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
           const SizedBox(height: 24),
 
           // Action Buttons

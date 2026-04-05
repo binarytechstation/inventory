@@ -192,13 +192,11 @@ class InvoiceService {
                            printSettings?['show_watermark'] == true);
     final watermarkText = printSettings?['watermark_text'] as String? ?? 'DRAFT';
     final watermarkOpacity = (printSettings?['watermark_opacity'] as num?)?.toDouble() ?? 0.1;
-    print('DEBUG: Watermark - show: $showWatermark, text: "$watermarkText", opacity: $watermarkOpacity');
 
     // Barcode settings
     final showBarcode = (printSettings?['show_barcode'] == 1 ||
                          printSettings?['show_barcode'] == true);
     final barcodeContent = printSettings?['barcode_content'] as String? ?? transaction['invoice_number'] as String;
-    print('DEBUG: Barcode - show: $showBarcode, content: "$barcodeContent"');
 
     pdf.addPage(
       pw.Page(
@@ -219,7 +217,7 @@ class InvoiceService {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Expanded(child: _buildInvoiceDetails(transaction)),
+                      pw.Expanded(child: _buildInvoiceDetails(transaction, headerSettings)),
                       if (showBarcode) ...[
                         pw.SizedBox(width: 20),
                         _buildBarcode(barcodeContent),
@@ -229,7 +227,7 @@ class InvoiceService {
                   pw.SizedBox(height: 20),
 
                   // Party details
-                  if (bodySettings?['show_party_details'] == 1)
+                  if ((bodySettings?['show_party_name'] as int? ?? 1) == 1)
                     _buildPartyDetails(transaction, bodySettings),
                   pw.SizedBox(height: 20),
 
@@ -318,11 +316,6 @@ class InvoiceService {
     final showRegistrationNumber = (headerSettings?['show_registration_number'] == 1 ||
                                      headerSettings?['show_registration_number'] == true);
 
-    print('DEBUG: Header - showTagline: $showTagline, tagline: "$companyTagline"');
-    print('DEBUG: Header - showWebsite: $showWebsite, website: "$companyWebsite"');
-    print('DEBUG: Header - showTaxId: $showTaxId, taxId: "$taxId"');
-    print('DEBUG: Header - showRegNum: $showRegistrationNumber, regNum: "$registrationNumber"');
-
     final showInvoiceTitle = (headerSettings?['show_invoice_title'] == 1 ||
                               headerSettings?['show_invoice_title'] == true);
     final invoiceTitle = headerSettings?['invoice_title'] as String? ?? 'INVOICE';
@@ -333,115 +326,121 @@ class InvoiceService {
     final logoPath = headerSettings?['logo_path'] as String?;
     final logoWidth = (headerSettings?['logo_width'] as int?) ?? 150;
     final logoHeight = (headerSettings?['logo_height'] as int?) ?? 80;
-    final logoPosition = headerSettings?['logo_position'] as String? ?? 'LEFT';
+    final logoPosition = (headerSettings?['logo_position'] as String? ?? 'LEFT').toUpperCase();
 
     // Load logo image if available
     pw.ImageProvider? logoImage;
     if (showLogo && logoPath != null && logoPath.isNotEmpty) {
       try {
         final logoFile = File(logoPath);
-        print('DEBUG: Attempting to load logo from: $logoPath');
-        print('DEBUG: Logo file exists: ${logoFile.existsSync()}');
         if (logoFile.existsSync()) {
           final bytes = logoFile.readAsBytesSync();
-          print('DEBUG: Logo file size: ${bytes.length} bytes');
           logoImage = pw.MemoryImage(bytes);
-          print('DEBUG: Logo loaded successfully');
-        } else {
-          print('DEBUG: Logo file does not exist at path');
         }
       } catch (e) {
         // Logo loading failed, continue without logo
-        print('ERROR loading logo: $e');
       }
+    }
+
+    // Company info column (shared for all logo positions)
+    final companyInfoColumn = pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          companyName,
+          style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+        ),
+        if (showTagline && companyTagline.isNotEmpty)
+          pw.Text(
+            companyTagline,
+            style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700),
+          ),
+        if (showAddress && companyAddress.isNotEmpty)
+          pw.Text(companyAddress, style: const pw.TextStyle(fontSize: 10)),
+        if (showPhone && companyPhone.isNotEmpty)
+          pw.Text('Tel: $companyPhone', style: const pw.TextStyle(fontSize: 10)),
+        if (showEmail && companyEmail.isNotEmpty)
+          pw.Text('Email: $companyEmail', style: const pw.TextStyle(fontSize: 10)),
+        if (showWebsite && companyWebsite.isNotEmpty)
+          pw.Text('Website: $companyWebsite', style: const pw.TextStyle(fontSize: 10)),
+        if (showTaxId && taxId.isNotEmpty)
+          pw.Text('Tax ID: $taxId', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        if (showRegistrationNumber && registrationNumber.isNotEmpty)
+          pw.Text('Reg. No: $registrationNumber', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+      ],
+    );
+
+    final logoWidget = logoImage != null
+        ? pw.Container(
+            width: logoWidth.toDouble(),
+            height: logoHeight.toDouble(),
+            child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+          )
+        : null;
+
+    final invoiceTitleWidget = showInvoiceTitle
+        ? pw.Text(
+            invoiceTitle,
+            style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColors.blue),
+          )
+        : null;
+
+    pw.Widget headerRow;
+    if (logoPosition == 'CENTER') {
+      // Logo centered above, then company name left + invoice title right
+      headerRow = pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (logoWidget != null)
+            pw.Center(child: logoWidget),
+          if (logoWidget != null)
+            pw.SizedBox(height: 8),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(flex: 2, child: companyInfoColumn),
+              if (invoiceTitleWidget != null) invoiceTitleWidget,
+            ],
+          ),
+        ],
+      );
     } else {
-      print('DEBUG: Logo not shown - showLogo: $showLogo, logoPath: $logoPath');
+      // LEFT or RIGHT
+      headerRow = pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // Left side: logo (if LEFT) + company info
+          pw.Expanded(
+            flex: 2,
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (logoWidget != null && logoPosition == 'LEFT') ...[
+                  logoWidget,
+                  pw.SizedBox(width: 15),
+                ],
+                pw.Expanded(child: companyInfoColumn),
+              ],
+            ),
+          ),
+          // Right side: logo (if RIGHT) + invoice title
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              if (logoWidget != null && logoPosition == 'RIGHT') logoWidget,
+              if (invoiceTitleWidget != null) invoiceTitleWidget,
+            ],
+          ),
+        ],
+      );
     }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            // Left side: Logo (if position is LEFT) and Company info
-            pw.Expanded(
-              flex: 2,
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  // Logo on the left
-                  if (logoImage != null && logoPosition == 'LEFT') ...[
-                    pw.Container(
-                      width: logoWidth.toDouble(),
-                      height: logoHeight.toDouble(),
-                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                    ),
-                    pw.SizedBox(width: 15),
-                  ],
-                  // Company details
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          companyName,
-                          style: pw.TextStyle(
-                            fontSize: 24,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        if (showTagline && companyTagline.isNotEmpty)
-                          pw.Text(
-                            companyTagline,
-                            style: pw.TextStyle(
-                              fontSize: 10,
-                              fontStyle: pw.FontStyle.italic,
-                              color: PdfColors.grey700,
-                            ),
-                          ),
-                        if (showAddress && companyAddress.isNotEmpty)
-                          pw.Text(companyAddress, style: const pw.TextStyle(fontSize: 10)),
-                        if (showPhone && companyPhone.isNotEmpty)
-                          pw.Text('Tel: $companyPhone', style: const pw.TextStyle(fontSize: 10)),
-                        if (showEmail && companyEmail.isNotEmpty)
-                          pw.Text('Email: $companyEmail', style: const pw.TextStyle(fontSize: 10)),
-                        if (showWebsite && companyWebsite.isNotEmpty)
-                          pw.Text('Website: $companyWebsite', style: const pw.TextStyle(fontSize: 10)),
-                        if (showTaxId && taxId.isNotEmpty)
-                          pw.Text('Tax ID: $taxId', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                        if (showRegistrationNumber && registrationNumber.isNotEmpty)
-                          pw.Text('Reg. No: $registrationNumber', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Right side: Invoice title or logo
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                if (logoImage != null && logoPosition == 'RIGHT')
-                  pw.Container(
-                    width: logoWidth.toDouble(),
-                    height: logoHeight.toDouble(),
-                    child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                  ),
-                if (showInvoiceTitle)
-                  pw.Text(
-                    invoiceTitle,
-                    style: pw.TextStyle(
-                      fontSize: 28,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
+        headerRow,
         pw.SizedBox(height: 10),
         pw.Divider(thickness: 2),
       ],
@@ -449,7 +448,12 @@ class InvoiceService {
   }
 
   /// Build invoice details section
-  pw.Widget _buildInvoiceDetails(Map<String, dynamic> transaction) {
+  pw.Widget _buildInvoiceDetails(
+    Map<String, dynamic> transaction,
+    Map<String, dynamic>? headerSettings,
+  ) {
+    final showInvoiceNumber = (headerSettings?['show_invoice_number'] == 1 || headerSettings?['show_invoice_number'] == true);
+    final showInvoiceDate = (headerSettings?['show_invoice_date'] == 1 || headerSettings?['show_invoice_date'] == true);
     final invoiceNumber = transaction['invoice_number'] as String;
     final date = DateTime.parse(transaction['transaction_date'] as String);
 
@@ -459,11 +463,13 @@ class InvoiceService {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(
-              'Invoice Number: $invoiceNumber',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Text('Date: ${DateFormat('dd MMM yyyy').format(date)}'),
+            if (showInvoiceNumber)
+              pw.Text(
+                'Invoice Number: $invoiceNumber',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              ),
+            if (showInvoiceDate)
+              pw.Text('Date: ${DateFormat('dd MMM yyyy').format(date)}'),
             pw.Text('Payment Mode: ${(transaction['payment_mode'] as String).toUpperCase()}'),
           ],
         ),
@@ -489,6 +495,11 @@ class InvoiceService {
     final partyName = transaction['party_name'] as String? ?? 'N/A';
     final partyLabel = bodySettings?['party_label'] as String? ?? 'Bill To';
 
+    final showCompany = (bodySettings?['show_party_company'] as int? ?? 1) == 1;
+    final showAddress = (bodySettings?['show_party_address'] as int? ?? 1) == 1;
+    final showPhone = (bodySettings?['show_party_phone'] as int? ?? 1) == 1;
+    final showEmail = (bodySettings?['show_party_email'] as int? ?? 1) == 1;
+
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
@@ -500,21 +511,18 @@ class InvoiceService {
         children: [
           pw.Text(
             partyLabel,
-            style: pw.TextStyle(
-              fontWeight: pw.FontWeight.bold,
-              fontSize: 12,
-            ),
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
           ),
           pw.SizedBox(height: 5),
           pw.Text(partyName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           if (partyDetails != null) ...[
-            if (partyDetails['company_name'] != null && (partyDetails['company_name'] as String).isNotEmpty)
+            if (showCompany && partyDetails['company_name'] != null && (partyDetails['company_name'] as String).isNotEmpty)
               pw.Text(partyDetails['company_name'] as String),
-            if (partyDetails['address'] != null && (partyDetails['address'] as String).isNotEmpty)
+            if (showAddress && partyDetails['address'] != null && (partyDetails['address'] as String).isNotEmpty)
               pw.Text(partyDetails['address'] as String),
-            if (partyDetails['phone'] != null && (partyDetails['phone'] as String).isNotEmpty)
+            if (showPhone && partyDetails['phone'] != null && (partyDetails['phone'] as String).isNotEmpty)
               pw.Text('Phone: ${partyDetails['phone']}'),
-            if (partyDetails['email'] != null && (partyDetails['email'] as String).isNotEmpty)
+            if (showEmail && partyDetails['email'] != null && (partyDetails['email'] as String).isNotEmpty)
               pw.Text('Email: ${partyDetails['email']}'),
           ],
         ],
@@ -616,12 +624,13 @@ class InvoiceService {
               if (bodySettings?['show_total_tax'] == 1)
                 _buildTotalRow('Tax:', '$currencySymbol${tax.toStringAsFixed(2)}'),
               pw.Divider(thickness: 2),
-              _buildTotalRow(
-                bodySettings?['grand_total_label'] as String? ?? 'Grand Total:',
-                '$currencySymbol${total.toStringAsFixed(2)}',
-                isBold: true,
-                fontSize: 14,
-              ),
+              if ((bodySettings?['show_grand_total'] as int? ?? 1) == 1)
+                _buildTotalRow(
+                  bodySettings?['grand_total_label'] as String? ?? 'Grand Total:',
+                  '$currencySymbol${total.toStringAsFixed(2)}',
+                  isBold: true,
+                  fontSize: ((bodySettings?['grand_total_font_size'] as int?) ?? 14).toDouble(),
+                ),
               if (paid > 0 || due > 0) ...[
                 pw.SizedBox(height: 4),
                 _buildTotalRow(
@@ -691,13 +700,34 @@ class InvoiceService {
     final showTerms = (footerSettings?['show_terms_and_conditions'] == 1 ||
                        footerSettings?['show_terms_and_conditions'] == true);
     final terms = footerSettings?['terms_and_conditions'] as String?;
-    print('DEBUG: Footer - showFooterText: $showFooterText, text: "$footerText"');
+    final showPaymentInstructions = (footerSettings?['show_payment_instructions'] == 1 ||
+                                    footerSettings?['show_payment_instructions'] == true);
+    final paymentInstructions = footerSettings?['payment_instructions'] as String?;
+    final showBankDetails = (footerSettings?['show_bank_details'] == 1 ||
+                             footerSettings?['show_bank_details'] == true);
+    final bankName = footerSettings?['bank_name'] as String?;
+    final accountHolder = footerSettings?['account_holder_name'] as String?;
+    final accountNumber = footerSettings?['account_number'] as String?;
+    final swiftCode = footerSettings?['swift_code'] as String?;
+    final iban = footerSettings?['iban'] as String?;
 
     // Signature and stamp settings
     final showSignature = (footerSettings?['show_signature'] == 1 ||
                            footerSettings?['show_signature'] == true);
     final signaturePath = footerSettings?['signature_image_path'] as String?;
     final signatureLabel = footerSettings?['signature_label'] as String? ?? 'Authorized Signature';
+    final signaturePositionRaw = (footerSettings?['signature_position'] as String? ?? 'LEFT').toUpperCase();
+    final pw.MainAxisAlignment signatureAlignment;
+    switch (signaturePositionRaw) {
+      case 'RIGHT':
+        signatureAlignment = pw.MainAxisAlignment.end;
+        break;
+      case 'CENTER':
+        signatureAlignment = pw.MainAxisAlignment.center;
+        break;
+      default:
+        signatureAlignment = pw.MainAxisAlignment.start;
+    }
 
     final showStamp = (footerSettings?['show_stamp'] == 1 ||
                        footerSettings?['show_stamp'] == true);
@@ -705,45 +735,30 @@ class InvoiceService {
 
     // Load signature image if available
     pw.ImageProvider? signatureImage;
-    print('DEBUG: Signature - show: $showSignature, path: "$signaturePath"');
     if (showSignature && signaturePath != null && signaturePath.isNotEmpty) {
       try {
         final signatureFile = File(signaturePath);
-        print('DEBUG: Signature file exists: ${signatureFile.existsSync()}');
         if (signatureFile.existsSync()) {
-          final bytes = signatureFile.readAsBytesSync();
-          print('DEBUG: Signature file size: ${bytes.length} bytes');
-          signatureImage = pw.MemoryImage(bytes);
-          print('DEBUG: Signature loaded successfully');
+          signatureImage = pw.MemoryImage(signatureFile.readAsBytesSync());
         }
-      } catch (e) {
-        print('ERROR loading signature: $e');
-      }
+      } catch (_) {}
     }
 
     // Load stamp image if available
     pw.ImageProvider? stampImage;
-    print('DEBUG: Stamp - show: $showStamp, path: "$stampPath"');
     if (showStamp && stampPath != null && stampPath.isNotEmpty) {
       try {
         final stampFile = File(stampPath);
-        print('DEBUG: Stamp file exists: ${stampFile.existsSync()}');
         if (stampFile.existsSync()) {
-          final bytes = stampFile.readAsBytesSync();
-          print('DEBUG: Stamp file size: ${bytes.length} bytes');
-          stampImage = pw.MemoryImage(bytes);
-          print('DEBUG: Stamp loaded successfully');
+          stampImage = pw.MemoryImage(stampFile.readAsBytesSync());
         }
-      } catch (e) {
-        print('ERROR loading stamp: $e');
-      }
+      } catch (_) {}
     }
 
     // QR code settings are in body settings
     final showQR = (bodySettings?['show_qr_code'] == 1 || bodySettings?['show_qr_code'] == true);
     final qrContent = bodySettings?['qr_code_content'] as String? ?? '{invoice_number}';
     final qrSize = (bodySettings?['qr_code_size'] as int?) ?? 100;
-    print('DEBUG: QR Code - show: $showQR, content: "$qrContent", size: $qrSize');
 
     // Generate QR code if enabled
     pw.Widget? qrWidget;
@@ -772,7 +787,7 @@ class InvoiceService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Divider(),
-        // Terms and conditions (left-aligned)
+        // Terms and conditions
         if (showTerms && terms != null && terms.isNotEmpty) ...[
           pw.Text(
             'Terms and Conditions',
@@ -784,12 +799,43 @@ class InvoiceService {
             style: const pw.TextStyle(fontSize: 8),
             textAlign: pw.TextAlign.left,
           ),
-          pw.SizedBox(height: 15),
+          pw.SizedBox(height: 10),
+        ],
+        // Payment instructions
+        if (showPaymentInstructions && paymentInstructions != null && paymentInstructions.isNotEmpty) ...[
+          pw.Text(
+            'Payment Instructions',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            paymentInstructions,
+            style: const pw.TextStyle(fontSize: 8),
+          ),
+          pw.SizedBox(height: 10),
+        ],
+        // Bank details
+        if (showBankDetails && bankName != null && bankName.isNotEmpty) ...[
+          pw.Text(
+            'Bank Details',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+          ),
+          pw.SizedBox(height: 4),
+          if (bankName.isNotEmpty) pw.Text('Bank: $bankName', style: const pw.TextStyle(fontSize: 8)),
+          if (accountHolder != null && accountHolder.isNotEmpty)
+            pw.Text('Account Holder: $accountHolder', style: const pw.TextStyle(fontSize: 8)),
+          if (accountNumber != null && accountNumber.isNotEmpty)
+            pw.Text('Account No: $accountNumber', style: const pw.TextStyle(fontSize: 8)),
+          if (swiftCode != null && swiftCode.isNotEmpty)
+            pw.Text('SWIFT: $swiftCode', style: const pw.TextStyle(fontSize: 8)),
+          if (iban != null && iban.isNotEmpty)
+            pw.Text('IBAN: $iban', style: const pw.TextStyle(fontSize: 8)),
+          pw.SizedBox(height: 10),
         ],
         // Signature and stamp row
         if (signatureImage != null || stampImage != null) ...[
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: stampImage != null ? pw.MainAxisAlignment.spaceEvenly : signatureAlignment,
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
               // Signature section

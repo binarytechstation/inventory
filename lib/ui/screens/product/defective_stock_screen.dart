@@ -860,7 +860,7 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
               controller: _tabController,
               children: [
                 _buildPendingTab(canManage),
-                _buildList(_returned, emptyMsg: 'No returned items yet', emptyIcon: Icons.check_circle_outline),
+                _buildList(_returned, emptyMsg: 'No returned items yet', emptyIcon: Icons.check_circle_outline, showActions: canManage),
                 _buildList(_writtenOff, emptyMsg: 'No write-offs', emptyIcon: Icons.cancel_outlined),
               ],
             ),
@@ -918,7 +918,7 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
   }
 
   Widget _buildList(List<DefectiveStockModel> items,
-      {required String emptyMsg, required IconData emptyIcon}) {
+      {required String emptyMsg, required IconData emptyIcon, bool showActions = false}) {
     if (items.isEmpty) {
       return Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -931,7 +931,7 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: items.length,
-      itemBuilder: (_, i) => _buildCard(items[i], showActions: false),
+      itemBuilder: (_, i) => _buildCard(items[i], showActions: showActions),
     );
   }
 
@@ -1022,7 +1022,7 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
             ],
           ]),
 
-          // Action buttons (only for pending items)
+          // Action buttons
           if (showActions && item.supplierReturnStatus == 'PENDING') ...[
             const SizedBox(height: 10),
             const Divider(height: 1),
@@ -1032,7 +1032,6 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
                 Text('Supplier rejected return',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic))
               else ...[
-                // Return to Stock — primary action for customer returns after inspection
                 FilledButton.icon(
                   onPressed: () => _returnToStock(item),
                   icon: const Icon(Icons.inventory_2, size: 15),
@@ -1064,7 +1063,22 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
                 ),
               ],
             ]),
+          ] else if (showActions && item.supplierReturnStatus == 'ACCEPTED') ...[
+            // Sent to supplier — only Return to Stock is available (supplier may send it back)
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: () => _returnToStock(item),
+              icon: const Icon(Icons.inventory_2, size: 15),
+              label: const Text('Return to Stock'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
           ],
+          // REJECTED (Write Off) — no actions, final state
         ]),
       ),
     );

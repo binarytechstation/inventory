@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/utils/path_helper.dart';
+import 'core/device_fingerprint/device_fingerprint.dart';
+import 'core/device_lock/device_allowlist.dart';
 import 'services/auth/auth_service.dart';
 import 'data/database/database_helper.dart';
 import 'ui/screens/activation/activation_screen.dart';
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
+import 'ui/screens/device_lock/device_lock_screen.dart';
 import 'ui/providers/auth_provider.dart';
 import 'ui/providers/app_provider.dart';
 import 'ui/providers/theme_provider.dart';
@@ -79,22 +82,30 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _initialize() async {
     try {
-      setState(() {
-        _initializationMessage = 'Loading application...';
-      });
+      setState(() => _initializationMessage = 'Verifying device...');
 
-      // Skip license check, go directly to login
-      await Future.delayed(const Duration(milliseconds: 500));
+      final fingerprint = await DeviceFingerprint().generateFingerprint();
+
+      if (!DeviceAllowlist.isAuthorized(fingerprint)) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DeviceLockScreen(fingerprint: fingerprint),
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() => _initializationMessage = 'Loading application...');
+      await Future.delayed(const Duration(milliseconds: 300));
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
       }
     } catch (e) {
-      setState(() {
-        _initializationMessage = 'Initialization error: $e';
-      });
-
-      // On error, wait a bit and try going to login anyway
+      setState(() => _initializationMessage = 'Initialization error: $e');
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
