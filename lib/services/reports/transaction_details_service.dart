@@ -236,6 +236,228 @@ class TransactionDetailsService {
     };
   }
 
+  // ─── Cash Flow ───────────────────────────────────────────────────────────────
+
+  /// Returns a day-by-day cash flow breakdown for the given period.
+  ///
+  /// Cash INFLOWS (money actually received on that day):
+  ///   • Cash portion of SELL transactions on that day (paid_amount where payment_mode='cash' or partial cash)
+  ///   • Customer due payments collected on that day (customer_payments table)
+  ///   • Cash refunds received from suppliers on that day (RETURN transactions where party_type='supplier', paid_amount)
+  ///
+  /// Cash OUTFLOWS (money actually paid out on that day):
+  ///   • Cash portion of BUY transactions on that day (paid_amount)
+  ///   • Supplier due payments made on that day (supplier_payments table)
+  ///   • Cash refunds given to customers (RETURN transactions where party_type='customer', paid_amount where payment_mode='cash')
+  ///   • Expenses on that day
+  ///
+  /// Accrual totals (value of goods bought/sold including credit):
+  ///   • total_sales: all SELL total_amount in period
+  ///   • total_purchases: all BUY total_amount in period
+  ///   • total_profit_accrual: total_sales − total_purchases
+  Future<Map<String, dynamic>> getCashFlowReport({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final db = await _dbHelper.database;
+    final start = startDate.toIso8601String();
+    final end = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59).toIso8601String();
+
+    // ── 1. Cash from SELL transactions (actual cash received at sale time) ──
+    final sellCash = await db.rawQuery('''
+      SELECT DATE(transaction_date) as day,
+             COALESCE(SUM(paid_amount), 0) as cash_in
+      FROM transactions
+      WHERE transaction_type = 'SELL'
+        AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+      GROUP BY DATE(transaction_date)
+    ''', [start, end]);
+
+    // ── 2. Customer due payments collected (payment_date = when cash arrived) ──
+    final customerPayments = await db.rawQuery('''
+      SELECT DATE(payment_date) as day,
+             COALESCE(SUM(amount), 0) as cash_in
+      FROM customer_payments
+      WHERE payment_date >= ? AND payment_date <= ?
+      GROUP BY DATE(payment_date)
+    ''', [start, end]);
+
+    // ── 3. Refund from supplier (we return goods, they pay us back) ──
+    final supplierReturnCash = await db.rawQuery('''
+      SELECT DATE(transaction_date) as day,
+             COALESCE(SUM(paid_amount), 0) as cash_in
+      FROM transactions
+      WHERE transaction_type = 'RETURN'
+        AND party_type = 'supplier'
+        AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+      GROUP BY DATE(transaction_date)
+    ''', [start, end]);
+
+    // ── 4. Cash spent on BUY transactions ──
+    final buyCash = await db.rawQuery('''
+      SELECT DATE(transaction_date) as day,
+             COALESCE(SUM(paid_amount), 0) as cash_out
+      FROM transactions
+      WHERE transaction_type = 'BUY'
+        AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+      GROUP BY DATE(transaction_date)
+    ''', [start, end]);
+
+    // ── 5. Supplier due payments made ──
+    final supplierPayments = await db.rawQuery('''
+      SELECT DATE(payment_date) as day,
+             COALESCE(SUM(amount), 0) as cash_out
+      FROM supplier_payments
+      WHERE payment_date >= ? AND payment_date <= ?
+      GROUP BY DATE(payment_date)
+    ''', [start, end]);
+
+    // ── 6. Cash refunds to customers (customer returns, cash refund method) ──
+    final customerReturnCash = await db.rawQuery('''
+      SELECT DATE(transaction_date) as day,
+             COALESCE(SUM(paid_amount), 0) as cash_out
+      FROM transactions
+      WHERE transaction_type = 'RETURN'
+        AND party_type = 'customer'
+        AND payment_mode = 'cash'
+        AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+      GROUP BY DATE(transaction_date)
+    ''', [start, end]);
+
+    // ── 7. Expenses ──
+    final expenses = await db.rawQuery('''
+      SELECT DATE(expense_date) as day,
+             COALESCE(SUM(amount), 0) as cash_out,
+             GROUP_CONCAT(title, ' | ') as titles
+      FROM expenses
+      WHERE expense_date >= ? AND expense_date <= ?
+      GROUP BY DATE(expense_date)
+    ''', [start, end]);
+
+    // ── Accrual totals (for big-picture summary) ──
+    final accrualSell = await db.rawQuery('''
+      SELECT COALESCE(SUM(total_amount), 0) as total,
+             COALESCE(SUM(paid_amount), 0) as paid,
+             COALESCE(SUM(credit_amount), 0) as credit
+      FROM transactions
+      WHERE transaction_type = 'SELL' AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+    ''', [start, end]);
+
+    final accrualBuy = await db.rawQuery('''
+      SELECT COALESCE(SUM(total_amount), 0) as total,
+             COALESCE(SUM(paid_amount), 0) as paid,
+             COALESCE(SUM(credit_amount), 0) as credit
+      FROM transactions
+      WHERE transaction_type = 'BUY' AND status != 'CANCELLED'
+        AND transaction_date >= ? AND transaction_date <= ?
+    ''', [start, end]);
+
+    final totalExpenses = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM expenses
+      WHERE expense_date >= ? AND expense_date <= ?
+    ''', [start, end]);
+
+    // ── Build day-keyed map ──
+    final days = <String, Map<String, dynamic>>{};
+
+    void addIn(List<Map<String, dynamic>> rows, String field) {
+      for (final r in rows) {
+        final day = r['day'] as String;
+        days.putIfAbsent(day, () => _emptyDay(day));
+        days[day]![field] = (days[day]![field] as double) + (r['cash_in'] as num).toDouble();
+      }
+    }
+
+    void addOut(List<Map<String, dynamic>> rows, String field, {String? labelField}) {
+      for (final r in rows) {
+        final day = r['day'] as String;
+        days.putIfAbsent(day, () => _emptyDay(day));
+        days[day]![field] = (days[day]![field] as double) + (r['cash_out'] as num).toDouble();
+        if (labelField != null && r[labelField] != null) {
+          final existing = days[day]!['expense_titles'] as String? ?? '';
+          days[day]!['expense_titles'] =
+              existing.isEmpty ? r[labelField] as String : '$existing | ${r[labelField]}';
+        }
+      }
+    }
+
+    addIn(sellCash, 'sell_cash');
+    addIn(customerPayments, 'customer_payments');
+    addIn(supplierReturnCash, 'supplier_return_cash');
+    addOut(buyCash, 'buy_cash');
+    addOut(supplierPayments, 'supplier_payments');
+    addOut(customerReturnCash, 'customer_return_cash');
+    addOut(expenses, 'expenses', labelField: 'titles');
+
+    // Compute net for each day
+    for (final d in days.values) {
+      d['total_in'] = (d['sell_cash'] as double) +
+          (d['customer_payments'] as double) +
+          (d['supplier_return_cash'] as double);
+      d['total_out'] = (d['buy_cash'] as double) +
+          (d['supplier_payments'] as double) +
+          (d['customer_return_cash'] as double) +
+          (d['expenses'] as double);
+      d['net'] = (d['total_in'] as double) - (d['total_out'] as double);
+    }
+
+    final sortedDays = days.values.toList()
+      ..sort((a, b) => (a['day'] as String).compareTo(b['day'] as String));
+
+    // Grand totals
+    double grandIn = 0, grandOut = 0;
+    for (final d in sortedDays) {
+      grandIn += d['total_in'] as double;
+      grandOut += d['total_out'] as double;
+    }
+
+    final totalSales = (accrualSell.first['total'] as num).toDouble();
+    final totalSalesPaid = (accrualSell.first['paid'] as num).toDouble();
+    final totalSalesCredit = (accrualSell.first['credit'] as num).toDouble();
+    final totalPurchases = (accrualBuy.first['total'] as num).toDouble();
+    final totalPurchasesPaid = (accrualBuy.first['paid'] as num).toDouble();
+    final totalPurchasesCredit = (accrualBuy.first['credit'] as num).toDouble();
+    final totalExp = (totalExpenses.first['total'] as num).toDouble();
+
+    return {
+      'days': sortedDays,
+      'grand_cash_in': grandIn,
+      'grand_cash_out': grandOut,
+      'net_cash': grandIn - grandOut,
+      // Accrual summary
+      'total_sales': totalSales,
+      'total_sales_paid': totalSalesPaid,
+      'total_sales_credit': totalSalesCredit,
+      'total_purchases': totalPurchases,
+      'total_purchases_paid': totalPurchasesPaid,
+      'total_purchases_credit': totalPurchasesCredit,
+      'total_expenses': totalExp,
+      'gross_profit_accrual': totalSales - totalPurchases,
+      'net_profit_accrual': totalSales - totalPurchases - totalExp,
+    };
+  }
+
+  Map<String, dynamic> _emptyDay(String day) => {
+        'day': day,
+        'sell_cash': 0.0,
+        'customer_payments': 0.0,
+        'supplier_return_cash': 0.0,
+        'buy_cash': 0.0,
+        'supplier_payments': 0.0,
+        'customer_return_cash': 0.0,
+        'expenses': 0.0,
+        'expense_titles': '',
+        'total_in': 0.0,
+        'total_out': 0.0,
+        'net': 0.0,
+      };
+
   // ─── Export ──────────────────────────────────────────────────────────────────
 
   Future<String> exportToExcel({

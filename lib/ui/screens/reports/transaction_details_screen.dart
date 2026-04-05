@@ -24,12 +24,13 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen>
     Tab(icon: Icon(Icons.local_shipping_outlined, size: 16), text: 'Supplier Dues'),
     Tab(icon: Icon(Icons.person_outline, size: 16), text: 'Customer Dues'),
     Tab(icon: Icon(Icons.assignment_return_outlined, size: 16), text: 'Returns & Defects'),
+    Tab(icon: Icon(Icons.account_balance_wallet_outlined, size: 16), text: 'Cash Flow'),
   ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _currencyService.getCurrencySymbol().then((s) {
       if (mounted) setState(() => _sym = s);
     });
@@ -63,6 +64,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen>
           _DuesTab(partyType: 'supplier', sym: _sym, svc: _svc),
           _DuesTab(partyType: 'customer', sym: _sym, svc: _svc),
           _ReturnsDefectsTab(sym: _sym, svc: _svc),
+          _CashFlowTab(sym: _sym, svc: _svc),
         ],
       ),
     );
@@ -1473,4 +1475,421 @@ class _ReturnsDefectsTabState extends State<_ReturnsDefectsTab>
 
   double _totalQty(List lines) =>
       lines.fold(0, (s, l) => s + (l['quantity'] as num).toDouble());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CASH FLOW TAB
+// ═══════════════════════════════════════════════════════════════════
+
+class _CashFlowTab extends StatefulWidget {
+  final String sym;
+  final TransactionDetailsService svc;
+
+  const _CashFlowTab({required this.sym, required this.svc});
+
+  @override
+  State<_CashFlowTab> createState() => _CashFlowTabState();
+}
+
+class _CashFlowTabState extends State<_CashFlowTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  DateTime? _start;
+  DateTime? _end;
+  Map<String, dynamic>? _report;
+  bool _loading = false;
+  bool _showDailyDetail = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _start = DateTime(now.year, now.month, 1);
+    _end = DateTime(now.year, now.month + 1, 0);
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final data = await widget.svc.getCashFlowReport(
+        startDate: _start!,
+        endDate: _end!,
+      );
+      if (mounted) setState(() { _report = data; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _start != null && _end != null
+          ? DateTimeRange(start: _start!, end: _end!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() { _start = picked.start; _end = picked.end; });
+      _load();
+    }
+  }
+
+  String _fmt(double v, {bool showSign = false}) {
+    final abs = v.abs().toStringAsFixed(2);
+    if (showSign && v > 0) return '+${widget.sym}$abs';
+    return '${widget.sym}$abs';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final days = (_report?['days'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final grandIn = (_report?['grand_cash_in'] as num?)?.toDouble() ?? 0;
+    final grandOut = (_report?['grand_cash_out'] as num?)?.toDouble() ?? 0;
+    final netCash = (_report?['net_cash'] as num?)?.toDouble() ?? 0;
+
+    final totalSales = (_report?['total_sales'] as num?)?.toDouble() ?? 0;
+    final totalSalesPaid = (_report?['total_sales_paid'] as num?)?.toDouble() ?? 0;
+    final totalSalesCredit = (_report?['total_sales_credit'] as num?)?.toDouble() ?? 0;
+    final totalPurchases = (_report?['total_purchases'] as num?)?.toDouble() ?? 0;
+    final totalPurchasesPaid = (_report?['total_purchases_paid'] as num?)?.toDouble() ?? 0;
+    final totalPurchasesCredit = (_report?['total_purchases_credit'] as num?)?.toDouble() ?? 0;
+    final totalExpenses = (_report?['total_expenses'] as num?)?.toDouble() ?? 0;
+    final grossProfit = (_report?['gross_profit_accrual'] as num?)?.toDouble() ?? 0;
+    final netProfit = (_report?['net_profit_accrual'] as num?)?.toDouble() ?? 0;
+
+    return Column(children: [
+      // ── Toolbar ───────────────────────────────────────────────────
+      Container(
+        color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                _start != null && _end != null
+                    ? '${DateFormat('dd MMM yyyy').format(_start!)} – ${DateFormat('dd MMM yyyy').format(_end!)}'
+                    : 'Select period',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text('${days.length} days with activity',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ]),
+          ),
+          TextButton.icon(
+            onPressed: _pickRange,
+            icon: const Icon(Icons.calendar_today, size: 16),
+            label: const Text('Period'),
+          ),
+          TextButton.icon(
+            onPressed: _load,
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Refresh'),
+          ),
+          const SizedBox(width: 8),
+          ToggleButtons(
+            isSelected: [_showDailyDetail, !_showDailyDetail],
+            onPressed: (i) => setState(() => _showDailyDetail = i == 0),
+            borderRadius: BorderRadius.circular(8),
+            constraints: const BoxConstraints(minWidth: 80, minHeight: 32),
+            children: const [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.view_list, size: 14), SizedBox(width: 4),
+                Text('Detail', style: TextStyle(fontSize: 12)),
+              ]),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.summarize, size: 14), SizedBox(width: 4),
+                Text('Summary', style: TextStyle(fontSize: 12)),
+              ]),
+            ],
+          ),
+        ]),
+      ),
+
+      Expanded(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _report == null
+                ? const Center(child: Text('No data'))
+                : _showDailyDetail
+                    ? _buildDetailView(days, isDark, grandIn, grandOut, netCash)
+                    : _buildSummaryView(
+                        isDark, grandIn, grandOut, netCash,
+                        totalSales, totalSalesPaid, totalSalesCredit,
+                        totalPurchases, totalPurchasesPaid, totalPurchasesCredit,
+                        totalExpenses, grossProfit, netProfit),
+      ),
+    ]);
+  }
+
+  Widget _buildDetailView(
+    List<Map<String, dynamic>> days,
+    bool isDark,
+    double grandIn,
+    double grandOut,
+    double netCash,
+  ) {
+    if (days.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.account_balance_wallet_outlined, size: 56, color: Colors.grey.shade300),
+          const SizedBox(height: 12),
+          Text('No cash movements in this period',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
+        ]),
+      );
+    }
+
+    return Column(children: [
+      _grandTotalsBar(grandIn, grandOut, netCash, isDark),
+      Expanded(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: DataTable(
+              columnSpacing: 16,
+              headingRowHeight: 38,
+              dataRowMinHeight: 44,
+              dataRowMaxHeight: 60,
+              headingRowColor: WidgetStateProperty.all(
+                isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+              ),
+              columns: const [
+                DataColumn(label: Text('Date')),
+                DataColumn(label: Text('Sales Cash'), numeric: true),
+                DataColumn(label: Text('Due Collected'), numeric: true),
+                DataColumn(label: Text('Supplier Refund'), numeric: true),
+                DataColumn(label: Text('Total In'), numeric: true),
+                DataColumn(label: Text('Purchase Cash'), numeric: true),
+                DataColumn(label: Text('Supplier Paid'), numeric: true),
+                DataColumn(label: Text('Cust. Refund'), numeric: true),
+                DataColumn(label: Text('Expenses'), numeric: true),
+                DataColumn(label: Text('Total Out'), numeric: true),
+                DataColumn(label: Text('Net Cash'), numeric: true),
+              ],
+              rows: days.map((d) {
+                final totalIn = d['total_in'] as double;
+                final totalOut = d['total_out'] as double;
+                final net = d['net'] as double;
+                final isPositive = net >= 0;
+                final date = DateTime.tryParse(d['day'] as String);
+
+                return DataRow(
+                  color: WidgetStateProperty.resolveWith((_) => isPositive
+                      ? (isDark ? Colors.green.withValues(alpha: 0.06) : Colors.green.shade50)
+                      : (isDark ? Colors.red.withValues(alpha: 0.06) : Colors.red.shade50)),
+                  cells: [
+                    DataCell(Text(
+                      date != null ? DateFormat('dd MMM yy').format(date) : d['day'] as String,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    )),
+                    DataCell(_amtCell(d['sell_cash'] as double, Colors.green, isDark)),
+                    DataCell(_amtCell(d['customer_payments'] as double, Colors.teal, isDark)),
+                    DataCell(_amtCell(d['supplier_return_cash'] as double, Colors.blue, isDark)),
+                    DataCell(Text('${widget.sym}${totalIn.toStringAsFixed(2)}',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green.shade700))),
+                    DataCell(_amtCell(d['buy_cash'] as double, Colors.red, isDark)),
+                    DataCell(_amtCell(d['supplier_payments'] as double, Colors.orange, isDark)),
+                    DataCell(_amtCell(d['customer_return_cash'] as double, Colors.purple, isDark)),
+                    DataCell(Tooltip(
+                      message: (d['expense_titles'] as String? ?? '').isNotEmpty
+                          ? d['expense_titles'] as String : '',
+                      child: _amtCell(d['expenses'] as double, Colors.red, isDark),
+                    )),
+                    DataCell(Text('${widget.sym}${totalOut.toStringAsFixed(2)}',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red.shade700))),
+                    DataCell(_netCell(net, isDark)),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildSummaryView(
+    bool isDark,
+    double grandIn,
+    double grandOut,
+    double netCash,
+    double totalSales,
+    double totalSalesPaid,
+    double totalSalesCredit,
+    double totalPurchases,
+    double totalPurchasesPaid,
+    double totalPurchasesCredit,
+    double totalExpenses,
+    double grossProfit,
+    double netProfit,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _sectionHeader('Cash Movement (Actual Cash)', Icons.account_balance_wallet, Colors.blue, isDark),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _summaryCard('Total Cash In', _fmt(grandIn), Colors.green, isDark, subtitle: 'Cash actually received')),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Total Cash Out', _fmt(grandOut), Colors.red, isDark, subtitle: 'Cash actually paid out')),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Net Cash Flow', _fmt(netCash, showSign: true),
+              netCash >= 0 ? Colors.green : Colors.red, isDark,
+              subtitle: netCash >= 0 ? 'Net positive' : 'Net deficit', isBig: true)),
+        ]),
+        const SizedBox(height: 10),
+        _detailTile('Sales – Cash collected at sale', _fmt(totalSalesPaid), Colors.green, isDark),
+        _detailTile('Purchases – Cash paid at purchase', _fmt(totalPurchasesPaid), Colors.red, isDark),
+        _detailTile('Expenses (cash out)', _fmt(totalExpenses), Colors.red, isDark),
+        _detailTile('Due collections & supplier payments are also counted in the totals above', '', Colors.grey, isDark),
+
+        const SizedBox(height: 28),
+
+        _sectionHeader('Business Performance (Incl. Credit)', Icons.bar_chart, Colors.indigo, isDark),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _summaryCard('Total Sales', _fmt(totalSales), Colors.green, isDark, subtitle: 'All sales incl. credit')),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Total Purchases', _fmt(totalPurchases), Colors.blue, isDark, subtitle: 'All purchases incl. credit')),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Total Expenses', _fmt(totalExpenses), Colors.orange, isDark, subtitle: 'All recorded expenses')),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _summaryCard('Gross Profit', _fmt(grossProfit, showSign: true),
+              grossProfit >= 0 ? Colors.teal : Colors.red, isDark, subtitle: 'Sales − Purchases')),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Net Profit', _fmt(netProfit, showSign: true),
+              netProfit >= 0 ? Colors.green : Colors.red, isDark,
+              subtitle: 'Gross Profit − Expenses', isBig: true)),
+          const SizedBox(width: 12),
+          Expanded(child: _summaryCard('Outstanding Receivable', _fmt(totalSalesCredit),
+              Colors.amber.shade700, isDark, subtitle: 'Sales on credit (to collect)')),
+        ]),
+        const SizedBox(height: 10),
+        _detailTile('Sales cash collected', _fmt(totalSalesPaid), Colors.green, isDark),
+        _detailTile('Sales on credit (not yet received)', _fmt(totalSalesCredit), Colors.amber.shade700, isDark),
+        _detailTile('Purchases cash paid', _fmt(totalPurchasesPaid), Colors.blue, isDark),
+        _detailTile('Purchases on credit (not yet paid)', _fmt(totalPurchasesCredit), Colors.orange, isDark),
+      ]),
+    );
+  }
+
+  Widget _grandTotalsBar(double grandIn, double grandOut, double net, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: isDark ? Colors.blueGrey.shade900.withValues(alpha: 0.4) : Colors.blueGrey.shade50,
+      child: Row(children: [
+        _pill('Cash In', _fmt(grandIn), Colors.green, isDark),
+        const SizedBox(width: 10),
+        _pill('Cash Out', _fmt(grandOut), Colors.red, isDark),
+        const SizedBox(width: 10),
+        _pill('Net', _fmt(net, showSign: true), net >= 0 ? Colors.green : Colors.red, isDark),
+        const Spacer(),
+        Text('Hover Expenses cell to see expense titles',
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
+      ]),
+    );
+  }
+
+  Widget _pill(String label, String value, Color color, bool isDark) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.2 : 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.8))),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
+        ]),
+      );
+
+  Widget _amtCell(double v, Color color, bool isDark) {
+    if (v == 0) return Text('—', style: TextStyle(fontSize: 12, color: Colors.grey.shade400));
+    return Text('${widget.sym}${v.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: color));
+  }
+
+  Widget _netCell(double net, bool isDark) {
+    final color = net >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: (net >= 0 ? Colors.green : Colors.red).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '${net >= 0 ? '+' : ''}${widget.sym}${net.abs().toStringAsFixed(2)}',
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, IconData icon, Color color, bool isDark) {
+    return Row(children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.2 : 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 18, color: color),
+      ),
+      const SizedBox(width: 10),
+      Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white : Colors.black87)),
+    ]);
+  }
+
+  Widget _summaryCard(String label, String value, Color color, bool isDark,
+      {String? subtitle, bool isBig = false}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: isDark ? 0.25 : 0.12),
+            color.withValues(alpha: isDark ? 0.12 : 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.3 : 0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[300] : Colors.grey[700])),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(
+            fontSize: isBig ? 22 : 18,
+            fontWeight: FontWeight.bold,
+            color: isDark ? color.withValues(alpha: 0.9) : color)),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(fontSize: 10, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+        ],
+      ]),
+    );
+  }
+
+  Widget _detailTile(String label, String value, Color color, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        Container(width: 3, height: 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[300] : Colors.grey[700]))),
+        if (value.isNotEmpty) Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+      ]),
+    );
+  }
 }

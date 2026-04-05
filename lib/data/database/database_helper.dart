@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 9,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -108,6 +108,11 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_supplier_payments_supplier ON supplier_payments(supplier_id)');
     await db.execute('CREATE INDEX idx_customer_payments_customer ON customer_payments(customer_id)');
     await db.execute('CREATE INDEX idx_defective_stock_product ON defective_stock(product_id, lot_id)');
+
+    // Expenses table (v11)
+    await db.execute(DatabaseSchema.createExpensesTable);
+    await db.execute('CREATE INDEX idx_expenses_date ON expenses(expense_date)');
+    await db.execute('CREATE INDEX idx_expenses_category ON expenses(category)');
 
     // Transaction indexes
     await db.execute('CREATE INDEX idx_transactions_date ON transactions(transaction_date)');
@@ -552,6 +557,28 @@ class DatabaseHelper {
         WHERE category IS NOT NULL AND category != ''
       ''');
       print('Migration v9 complete!');
+    }
+
+    if (oldVersion < 10) {
+      print('Migrating to v10: add reference_transaction_id to transactions...');
+      final txCols = await db.rawQuery('PRAGMA table_info(transactions)');
+      if (!txCols.any((c) => c['name'] == 'reference_transaction_id')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN reference_transaction_id INTEGER');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(reference_transaction_id)');
+      }
+      print('Migration v10 complete!');
+    }
+
+    if (oldVersion < 11) {
+      print('Migrating to v11: add expenses table...');
+      final expExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='expenses'");
+      if (expExists.isEmpty) {
+        await db.execute(DatabaseSchema.createExpensesTable);
+        await db.execute('CREATE INDEX idx_expenses_date ON expenses(expense_date)');
+        await db.execute('CREATE INDEX idx_expenses_category ON expenses(category)');
+      }
+      print('Migration v11 complete!');
     }
   }
 

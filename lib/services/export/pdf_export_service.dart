@@ -455,6 +455,23 @@ class PdfExportService {
               '$currencySymbol${(transaction['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
               isBold: true,
             ),
+            // Show paid / due breakdown whenever a payment has been made or there is a balance
+            if (((transaction['paid_amount'] as num?)?.toDouble() ?? 0) > 0 ||
+                ((transaction['credit_amount'] as num?)?.toDouble() ?? 0) > 0) ...[
+              pw.SizedBox(height: 4),
+              _buildTotalRow(
+                'Paid',
+                '$currencySymbol${(transaction['paid_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                color: PdfColors.green700,
+              ),
+              if (((transaction['credit_amount'] as num?)?.toDouble() ?? 0) > 0)
+                _buildTotalRow(
+                  'Balance Due',
+                  '$currencySymbol${(transaction['credit_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                  color: PdfColors.red700,
+                  isBold: true,
+                ),
+            ],
           ],
         ),
       ),
@@ -480,17 +497,24 @@ class PdfExportService {
   }
 
   // Helper: Build Total Row
-  pw.Widget _buildTotalRow(String label, String value, {bool isBold = false}) {
+  pw.Widget _buildTotalRow(String label, String value,
+      {bool isBold = false, PdfColor? color}) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
         pw.Text(
           label,
-          style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+          style: pw.TextStyle(
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          ),
         ),
         pw.Text(
           value,
-          style: isBold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+          style: pw.TextStyle(
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          ),
         ),
       ],
     );

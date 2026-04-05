@@ -9,11 +9,17 @@ import '../../../services/transaction/transaction_service.dart';
 import '../../../services/customer/customer_service.dart';
 import '../../../services/currency/currency_service.dart';
 import '../../../services/invoice/invoice_service.dart';
-import '../../../data/models/customer_model.dart';
 import '../../providers/auth_provider.dart';
 
 class TransactionsScreen extends StatefulWidget {
-  const TransactionsScreen({super.key});
+  final int initialTabIndex;
+  final String? initialDateFilter; // 'today' | 'week' | 'month' | null
+
+  const TransactionsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.initialDateFilter,
+  });
 
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -26,7 +32,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 1),
+    );
   }
 
   @override
@@ -93,11 +103,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> with SingleTick
             type: 'BUY',
             onNewTransaction: () => _navigateToNewTransaction('BUY'),
             transactionService: _transactionService,
+            initialDateFilter: widget.initialTabIndex == 0 ? widget.initialDateFilter : null,
           ),
           _TransactionTypeView(
             type: 'SELL',
             onNewTransaction: () => _navigateToNewTransaction('SELL'),
             transactionService: _transactionService,
+            initialDateFilter: widget.initialTabIndex == 1 ? widget.initialDateFilter : null,
           ),
         ],
       ),
@@ -109,11 +121,13 @@ class _TransactionTypeView extends StatefulWidget {
   final String type;
   final VoidCallback onNewTransaction;
   final TransactionService transactionService;
+  final String? initialDateFilter;
 
   const _TransactionTypeView({
     required this.type,
     required this.onNewTransaction,
     required this.transactionService,
+    this.initialDateFilter,
   });
 
   @override
@@ -130,6 +144,8 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
   final TextEditingController _searchController = TextEditingController();
   String _currencySymbol = '৳';
   bool _isPrinting = false;
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   @override
   bool get wantKeepAlive => true;
@@ -172,11 +188,30 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
         type: widget.type,
       );
       if (mounted) {
+        // Apply initial date filter from dashboard navigation
+        if (widget.initialDateFilter != null && _startDate == null && _endDate == null) {
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          switch (widget.initialDateFilter) {
+            case 'today':
+              _startDate = today;
+              _endDate = today;
+              break;
+            case 'week':
+              _startDate = today.subtract(Duration(days: today.weekday - 1));
+              _endDate = today;
+              break;
+            case 'month':
+              _startDate = DateTime(now.year, now.month, 1);
+              _endDate = today;
+              break;
+          }
+        }
         setState(() {
           _transactions = transactions;
-          _filteredTransactions = transactions;
           _isLoading = false;
         });
+        _applyFilters();
       }
     } catch (e) {
       if (mounted) {
@@ -189,25 +224,92 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
   }
 
   void _filterTransactions(String query) {
+    _applyFilters(searchQuery: query);
+  }
+
+  void _applyFilters({String? searchQuery}) {
+    final query = (searchQuery ?? _searchController.text).toLowerCase();
     setState(() {
-      if (query.isEmpty) {
-        _filteredTransactions = _transactions;
-      } else {
-        _filteredTransactions = _transactions.where((transaction) {
+      _filteredTransactions = _transactions.where((transaction) {
+        // Text search
+        if (query.isNotEmpty) {
           final invoiceNumber = (transaction['invoice_number'] as String? ?? '').toLowerCase();
           final partyName = (transaction['party_name'] as String? ?? '').toLowerCase();
           final paymentMode = (transaction['payment_mode'] as String? ?? '').toLowerCase();
           final productNames = (transaction['product_names'] as String? ?? '').toLowerCase();
-          final searchQuery = query.toLowerCase();
-
-          return invoiceNumber.contains(searchQuery) ||
-                 partyName.contains(searchQuery) ||
-                 paymentMode.contains(searchQuery) ||
-                 productNames.contains(searchQuery);
-        }).toList();
-      }
+          final matches = invoiceNumber.contains(query) ||
+              partyName.contains(query) ||
+              paymentMode.contains(query) ||
+              productNames.contains(query);
+          if (!matches) return false;
+        }
+        // Date range filter
+        if (_startDate != null || _endDate != null) {
+          final raw = transaction['transaction_date'] as String?;
+          if (raw == null) return false;
+          final txDate = DateTime.tryParse(raw);
+          if (txDate == null) return false;
+          final day = DateTime(txDate.year, txDate.month, txDate.day);
+          if (_startDate != null && day.isBefore(_startDate!)) return false;
+          if (_endDate != null && day.isAfter(_endDate!)) return false;
+        }
+        return true;
+      }).toList();
     });
   }
+
+  void _setQuickFilter(String preset) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    setState(() {
+      switch (preset) {
+        case 'today':
+          _startDate = today;
+          _endDate = today;
+          break;
+        case 'week':
+          _startDate = today.subtract(Duration(days: today.weekday - 1));
+          _endDate = today;
+          break;
+        case 'month':
+          _startDate = DateTime(now.year, now.month, 1);
+          _endDate = today;
+          break;
+        case 'clear':
+          _startDate = null;
+          _endDate = null;
+          break;
+      }
+    });
+    _applyFilters();
+  }
+
+  Future<void> _pickDate({required bool isStart}) async {
+    final initial = isStart
+        ? (_startDate ?? DateTime.now())
+        : (_endDate ?? DateTime.now());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          _startDate = picked;
+          if (_endDate != null && _endDate!.isBefore(picked)) _endDate = picked;
+        } else {
+          _endDate = picked;
+          if (_startDate != null && _startDate!.isAfter(picked)) _startDate = picked;
+        }
+      });
+      _applyFilters();
+    }
+  }
+
+  String _formatDateLabel(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +451,60 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
                 ),
                 onChanged: _filterTransactions,
               ),
+              const SizedBox(height: 10),
+              // ── Date filter row ──────────────────────────────
+              Row(
+                children: [
+                  // Quick filter chips
+                  _quickChip('Today', 'today'),
+                  const SizedBox(width: 6),
+                  _quickChip('This Week', 'week'),
+                  const SizedBox(width: 6),
+                  _quickChip('This Month', 'month'),
+                  const Spacer(),
+                  // From date picker
+                  _datePicker(
+                    label: _startDate != null ? _formatDateLabel(_startDate!) : 'From',
+                    icon: Icons.calendar_today,
+                    hasValue: _startDate != null,
+                    onTap: () => _pickDate(isStart: true),
+                  ),
+                  const SizedBox(width: 6),
+                  // To date picker
+                  _datePicker(
+                    label: _endDate != null ? _formatDateLabel(_endDate!) : 'To',
+                    icon: Icons.calendar_today,
+                    hasValue: _endDate != null,
+                    onTap: () => _pickDate(isStart: false),
+                  ),
+                  if (_startDate != null || _endDate != null) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      onPressed: () => _setQuickFilter('clear'),
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'Clear date filter',
+                      style: IconButton.styleFrom(
+                        foregroundColor: Colors.red.shade600,
+                        padding: const EdgeInsets.all(6),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (_startDate != null || _endDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Icon(Icons.filter_alt, size: 14, color: Colors.blue.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Showing ${_filteredTransactions.length} of ${_transactions.length} transactions',
+                        style: TextStyle(fontSize: 12, color: Colors.blue.shade600),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -375,6 +531,87 @@ class _TransactionTypeViewState extends State<_TransactionTypeView> with Automat
           ),
         ),
       ],
+    );
+  }
+
+  Widget _quickChip(String label, String preset) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isActive = switch (preset) {
+      'today' => _startDate != null &&
+          _endDate != null &&
+          _startDate!.isAtSameMomentAs(_endDate!) &&
+          _startDate!.isAtSameMomentAs(
+              DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)),
+      'week' => _startDate != null &&
+          _startDate!.isAtSameMomentAs(DateTime(DateTime.now().year, DateTime.now().month,
+              DateTime.now().day).subtract(Duration(days: DateTime.now().weekday - 1))),
+      'month' => _startDate != null &&
+          _startDate!.isAtSameMomentAs(
+              DateTime(DateTime.now().year, DateTime.now().month, 1)),
+      _ => false,
+    };
+    return GestureDetector(
+      onTap: () => _setQuickFilter(isActive ? 'clear' : preset),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isActive
+              ? Colors.blue.shade600
+              : (isDark ? const Color(0xFF334155) : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? Colors.blue.shade600 : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: isActive ? Colors.white : (isDark ? Colors.white70 : Colors.grey.shade700),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _datePicker({
+    required String label,
+    required IconData icon,
+    required bool hasValue,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: hasValue
+              ? Colors.blue.shade50
+              : (isDark ? const Color(0xFF334155) : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: hasValue ? Colors.blue.shade400 : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14,
+                color: hasValue ? Colors.blue.shade600 : Colors.grey.shade600),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
+                color: hasValue ? Colors.blue.shade700 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

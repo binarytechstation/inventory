@@ -59,6 +59,67 @@ class DefectiveStockService {
     return (result.first['total'] as num).toDouble();
   }
 
+  /// Restore a defective item back to sellable stock after inspection.
+  /// Updates stock.count, marks the defective record RETURNED_TO_STOCK,
+  /// and writes an audit entry to lot_history.
+  Future<void> returnToStock({
+    required int defectiveId,
+    required int productId,
+    required int lotId,
+    required double quantity,
+    int? userId,
+    String? notes,
+  }) async {
+    final db = await _dbHelper.database;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      // 1. Get current stock count for audit trail
+      final stockRows = await txn.query(
+        'stock',
+        columns: ['count'],
+        where: 'product_id = ? AND lot_id = ?',
+        whereArgs: [productId, lotId],
+      );
+      final before = stockRows.isNotEmpty
+          ? (stockRows.first['count'] as num).toDouble()
+          : 0.0;
+      final after = before + quantity;
+
+      // 2. Add quantity back to stock
+      await txn.rawUpdate('''
+        UPDATE stock SET count = count + ?, last_stock_update = ?, updated_at = ?
+        WHERE product_id = ? AND lot_id = ?
+      ''', [quantity, now, now, productId, lotId]);
+
+      // 3. Mark defective record as returned to stock
+      await txn.update(
+        'defective_stock',
+        {
+          'supplier_return_status': 'RETURNED_TO_STOCK',
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [defectiveId],
+      );
+
+      // 4. Write audit trail to lot_history
+      await txn.insert('lot_history', {
+        'lot_id': lotId,
+        'product_id': productId,
+        'action': 'RESTOCK_DEFECTIVE',
+        'quantity_change': quantity,
+        'quantity_before': before,
+        'quantity_after': after,
+        'reference_type': 'defective_stock',
+        'reference_id': defectiveId,
+        'user_id': userId,
+        'notes': notes ?? 'Defective item inspected and returned to stock',
+        'created_at': now,
+      });
+    });
+  }
+
   /// Get defective stock summary per product (for product page display)
   Future<List<Map<String, dynamic>>> getDefectiveSummaryByProduct() async {
     final db = await _dbHelper.database;

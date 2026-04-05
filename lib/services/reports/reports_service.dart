@@ -117,10 +117,12 @@ class ReportsService {
       FROM products p
       INNER JOIN stock s ON p.product_id = s.product_id AND p.lot_id = s.lot_id
       INNER JOIN lots l ON p.lot_id = l.lot_id
-      WHERE s.count <= s.reorder_level
-        AND s.reorder_level > 0
-        AND p.is_active = 1
-      ORDER BY (s.count / NULLIF(s.reorder_level, 0)) ASC
+      WHERE p.is_active = 1
+        AND (
+          s.count = 0
+          OR (s.reorder_level > 0 AND s.count <= s.reorder_level)
+        )
+      ORDER BY s.count ASC, (s.count / NULLIF(s.reorder_level, 0)) ASC
     ''');
 
     return result;

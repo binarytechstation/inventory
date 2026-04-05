@@ -249,83 +249,312 @@ class _SupplierDetailScreenState extends State<SupplierDetailScreen>
   }
 
   Widget _buildOverviewTab(SupplierModel supplier, ThemeData theme, bool hasDue) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    final totalAmount  = (_stats['total_amount']    as num?)?.toDouble() ?? 0;
+    final totalPaid    = (_stats['total_paid']       as num?)?.toDouble() ?? 0;
+    final outstanding  = (_stats['total_credit']     as num?)?.toDouble() ?? 0;
+    final totalOrders  = (_stats['total_purchases']  as num?)?.toInt()    ?? 0;
+    final lastPurchaseStr = _stats['last_purchase_date'] as String?;
+    final lastPurchase = lastPurchaseStr != null ? DateTime.tryParse(lastPurchaseStr) : null;
+    final avgOrder     = totalOrders > 0 ? totalAmount / totalOrders : 0.0;
+    final paymentRate  = totalAmount > 0 ? (totalPaid / totalAmount).clamp(0.0, 1.0) : (totalPaid > 0 ? 1.0 : 0.0);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Balance card
-        if (hasDue)
-          Card(
-            color: Colors.red.shade50,
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Outstanding Balance', style: TextStyle(color: Colors.red.shade700)),
-                    Text('৳${supplier.currentBalance.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
-                    Text('You owe this dealer', style: TextStyle(color: Colors.red.shade600, fontSize: 12)),
-                  ]),
-                ),
-                ElevatedButton(
-                  onPressed: _showClearDueDialog,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade600),
-                  child: const Text('Pay Now', style: TextStyle(color: Colors.white)),
-                ),
-              ]),
-            ),
-          ),
 
-        // Stats row
-        Row(children: [
-          _statCard('Total Purchases', '${_stats['total_purchases'] ?? 0}', Icons.shopping_cart, theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          _statCard('Total Amount', '৳${((_stats['total_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.currency_exchange, Colors.green),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _statCard('Total Paid', '৳${((_stats['total_paid'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.check_circle, Colors.teal),
-          const SizedBox(width: 12),
-          _statCard('Outstanding', '৳${((_stats['total_credit'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.credit_card, Colors.orange),
-        ]),
-        const SizedBox(height: 16),
-
-        // Contact info
+        // ── Financial Summary ───────────────────────────────────
         Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Contact Info', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const Divider(),
-              if (supplier.companyName != null)
-                _infoRow(Icons.business, 'Company', supplier.companyName!),
-              if (supplier.phone != null)
-                _infoRow(Icons.phone, 'Phone', supplier.phone!),
-              if (supplier.email != null)
-                _infoRow(Icons.email, 'Email', supplier.email!),
-              if (supplier.address != null)
-                _infoRow(Icons.location_on, 'Address', supplier.address!),
-              if (supplier.taxId != null)
-                _infoRow(Icons.receipt, 'Tax ID', supplier.taxId!),
-              if (supplier.notes != null && supplier.notes!.isNotEmpty)
-                _infoRow(Icons.notes, 'Notes', supplier.notes!),
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.bar_chart_rounded, color: theme.colorScheme.primary, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text('Financial Summary',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                if (lastPurchase != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('Last: ${_formatDate(lastPurchase)}',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                  ),
+              ]),
+              const SizedBox(height: 16),
+
+              // Row 1: Total Amount | Paid | Outstanding
+              Row(children: [
+                _financeMetric('Total Purchased', totalAmount, Icons.shopping_cart_outlined,
+                    Colors.blue.shade600, isDark),
+                const SizedBox(width: 8),
+                _financeMetric('Total Paid', totalPaid, Icons.check_circle_outline,
+                    Colors.teal.shade600, isDark),
+                const SizedBox(width: 8),
+                _financeMetric('Outstanding', outstanding, Icons.pending_outlined,
+                    outstanding > 0 ? Colors.red.shade600 : Colors.grey.shade400, isDark,
+                    highlighted: outstanding > 0),
+              ]),
+              const SizedBox(height: 8),
+
+              // Row 2: Avg Order | # Orders | (filler)
+              Row(children: [
+                _financeMetric('Avg. Order', avgOrder, Icons.receipt_long_outlined,
+                    Colors.indigo.shade500, isDark),
+                const SizedBox(width: 8),
+                _financeMetricCount('Orders', totalOrders, Icons.shopping_bag_outlined,
+                    theme.colorScheme.primary, isDark),
+                const SizedBox(width: 8),
+                Expanded(child: SizedBox.shrink()),
+              ]),
+
+              // Payment progress bar
+              if (totalAmount > 0 || totalPaid > 0) ...[
+                const SizedBox(height: 16),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Payment Completion',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                  Text('${(paymentRate * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold,
+                        color: paymentRate >= 1.0 ? Colors.green.shade700 : Colors.red.shade600,
+                      )),
+                ]),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: paymentRate,
+                    minHeight: 10,
+                    backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation(
+                        paymentRate >= 1.0 ? Colors.green.shade600 : Colors.red.shade500),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Paid: ৳${totalPaid.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 11, color: Colors.teal.shade600)),
+                  if (outstanding > 0)
+                    Text('You Owe: ৳${outstanding.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: 11, color: Colors.red.shade600, fontWeight: FontWeight.w600)),
+                ]),
+              ],
             ]),
           ),
         ),
 
-        // Unpaid bills
+        const SizedBox(height: 12),
+
+        // ── Dealer Profile ──────────────────────────────────────
+        Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.blueGrey.shade800 : Colors.blueGrey.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.store_outlined, color: Colors.blueGrey.shade600, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text('Dealer Profile',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              ]),
+              const SizedBox(height: 14),
+
+              Row(children: [
+                Expanded(child: _profileTile(
+                  'Avg. Order Value',
+                  avgOrder > 0 ? '৳${avgOrder.toStringAsFixed(2)}' : '—',
+                  Icons.receipt_long, Colors.indigo, isDark,
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: _profileTile(
+                  'Partner Since',
+                  _formatDate(supplier.createdAt),
+                  Icons.calendar_today, Colors.blueGrey, isDark,
+                )),
+              ]),
+
+              if (supplier.creditLimit > 0) ...[
+                const SizedBox(height: 10),
+                _profileTile(
+                  'Credit Limit',
+                  '৳${supplier.creditLimit.toStringAsFixed(2)}',
+                  Icons.credit_score, Colors.teal, isDark,
+                ),
+              ],
+
+              if (supplier.phone != null || supplier.email != null ||
+                  supplier.address != null || supplier.companyName != null || supplier.taxId != null) ...[
+                const Divider(height: 24),
+                Text('Contact', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                const SizedBox(height: 8),
+                if (supplier.companyName != null)
+                  _infoRow(Icons.business, 'Company', supplier.companyName!),
+                if (supplier.phone != null)
+                  _infoRow(Icons.phone, 'Phone', supplier.phone!),
+                if (supplier.email != null)
+                  _infoRow(Icons.email, 'Email', supplier.email!),
+                if (supplier.address != null)
+                  _infoRow(Icons.location_on, 'Address', supplier.address!),
+                if (supplier.taxId != null)
+                  _infoRow(Icons.receipt, 'Tax ID', supplier.taxId!),
+                if (supplier.notes != null && supplier.notes!.isNotEmpty)
+                  _infoRow(Icons.notes, 'Notes', supplier.notes!),
+              ],
+            ]),
+          ),
+        ),
+
+        // ── Outstanding Balance ─────────────────────────────────
+        if (hasDue) ...[
+          const SizedBox(height: 12),
+          Card(
+            color: isDark ? Colors.red.shade900.withValues(alpha: 0.25) : Colors.red.shade50,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.red.shade300, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.red.shade100, shape: BoxShape.circle),
+                  child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('You Owe This Dealer',
+                      style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text('৳${supplier.currentBalance.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.red.shade900)),
+                  Text('Clear dues to maintain good relations',
+                      style: TextStyle(color: Colors.red.shade600, fontSize: 11)),
+                ])),
+                ElevatedButton.icon(
+                  onPressed: _showClearDueDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.payments, color: Colors.white, size: 18),
+                  label: const Text('Pay Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ]),
+            ),
+          ),
+        ],
+
+        // ── Unpaid Bills ────────────────────────────────────────
         if (_creditTransactions.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Unpaid Bills', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Row(children: [
+            Icon(Icons.pending_actions, size: 18, color: Colors.red.shade700),
+            const SizedBox(width: 6),
+            Text('Unpaid Bills',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.red.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('${_creditTransactions.length}',
+                  style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+          ]),
           const SizedBox(height: 8),
           ..._creditTransactions.map((tx) => _buildCreditTxCard(tx, theme)),
         ],
+      ]),
+    );
+  }
+
+  Widget _financeMetric(String label, double value, IconData icon, Color color, bool isDark,
+      {bool highlighted = false}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: highlighted
+              ? color.withValues(alpha: isDark ? 0.18 : 0.08)
+              : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade50),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: highlighted ? color.withValues(alpha: 0.35) : Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(height: 5),
+          Text('৳${value.toStringAsFixed(0)}',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,
+                  color: highlighted ? color : null)),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+              overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
+
+  Widget _financeMetricCount(String label, int count, IconData icon, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(height: 5),
+          Text('$count', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _profileTile(String label, String value, IconData icon, Color color, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.15 : 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+              overflow: TextOverflow.ellipsis),
+        ])),
       ]),
     );
   }
@@ -840,23 +1069,6 @@ class _SupplierDetailScreenState extends State<SupplierDetailScreen>
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 8),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ])),
-          ]),
-        ),
-      ),
-    );
-  }
 
   Widget _infoRow(IconData icon, String label, String value) {
     return Padding(

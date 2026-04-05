@@ -599,6 +599,8 @@ class InvoiceService {
     final discount = (transaction['discount_amount'] as num).toDouble();
     final tax = (transaction['tax_amount'] as num).toDouble();
     final total = (transaction['total_amount'] as num).toDouble();
+    final paid = (transaction['paid_amount'] as num?)?.toDouble() ?? 0.0;
+    final due = (transaction['credit_amount'] as num?)?.toDouble() ?? 0.0;
 
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -615,11 +617,26 @@ class InvoiceService {
                 _buildTotalRow('Tax:', '$currencySymbol${tax.toStringAsFixed(2)}'),
               pw.Divider(thickness: 2),
               _buildTotalRow(
-                bodySettings?['grand_total_label'] as String? ?? 'Total:',
+                bodySettings?['grand_total_label'] as String? ?? 'Grand Total:',
                 '$currencySymbol${total.toStringAsFixed(2)}',
                 isBold: true,
                 fontSize: 14,
               ),
+              if (paid > 0 || due > 0) ...[
+                pw.SizedBox(height: 4),
+                _buildTotalRow(
+                  'Paid:',
+                  '$currencySymbol${paid.toStringAsFixed(2)}',
+                  color: PdfColors.green700,
+                ),
+                if (due > 0)
+                  _buildTotalRow(
+                    'Balance Due:',
+                    '$currencySymbol${due.toStringAsFixed(2)}',
+                    color: PdfColors.red700,
+                    isBold: true,
+                  ),
+              ],
             ],
           ),
         ),
@@ -633,6 +650,7 @@ class InvoiceService {
     String value, {
     bool isBold = false,
     double fontSize = 11,
+    PdfColor? color,
   }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 3),
@@ -644,6 +662,7 @@ class InvoiceService {
             style: pw.TextStyle(
               fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
               fontSize: fontSize,
+              color: color,
             ),
           ),
           pw.Text(
@@ -651,6 +670,7 @@ class InvoiceService {
             style: pw.TextStyle(
               fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
               fontSize: fontSize,
+              color: color,
             ),
           ),
         ],

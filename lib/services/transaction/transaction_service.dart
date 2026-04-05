@@ -26,6 +26,11 @@ class TransactionService {
     // For defective returns
     String returnType = 'NORMAL',   // 'NORMAL' or 'DEFECTIVE'
     bool isRefundable = true,
+    // When true, skip the automatic supplier/customer balance adjustment.
+    // Use for replacement returns where no money changes hands.
+    bool skipBalanceAdjustment = false,
+    // Links a RETURN transaction back to the original SELL/BUY it was returned from.
+    int? referenceTransactionId,
   }) async {
     final db = await _dbHelper.database;
 
@@ -82,6 +87,7 @@ class TransactionService {
         'notes': notes,
         'currency_code': currencyCode,
         'currency_symbol': currencySymbol,
+        'reference_transaction_id': referenceTransactionId,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       });
@@ -167,36 +173,38 @@ class TransactionService {
         }
       }
 
-      // Update party balance based on credit amount
-      if (resolvedCredit > 0) {
-        if (partyType == 'customer' && type == 'SELL') {
-          await txn.rawUpdate('''
-            UPDATE customers SET current_balance = current_balance + ?, updated_at = ?
-            WHERE id = ?
-          ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
-        } else if (partyType == 'supplier' && type == 'BUY') {
-          await txn.rawUpdate('''
-            UPDATE suppliers SET current_balance = current_balance + ?, updated_at = ?
-            WHERE id = ?
-          ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
+      if (!skipBalanceAdjustment) {
+        // Update party balance based on credit amount
+        if (resolvedCredit > 0) {
+          if (partyType == 'customer' && type == 'SELL') {
+            await txn.rawUpdate('''
+              UPDATE customers SET current_balance = current_balance + ?, updated_at = ?
+              WHERE id = ?
+            ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
+          } else if (partyType == 'supplier' && type == 'BUY') {
+            await txn.rawUpdate('''
+              UPDATE suppliers SET current_balance = current_balance + ?, updated_at = ?
+              WHERE id = ?
+            ''', [resolvedCredit, DateTime.now().toIso8601String(), partyId]);
+          }
         }
-      }
 
-      // If it's a customer RETURN, reduce their balance by the refunded amount
-      if (type == 'RETURN' && partyType == 'customer') {
-        final refundCredit = resolvedCredit > 0 ? resolvedCredit : total;
-        await txn.rawUpdate('''
-          UPDATE customers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
-          WHERE id = ?
-        ''', [refundCredit, DateTime.now().toIso8601String(), partyId]);
-      }
+        // If it's a customer RETURN, reduce their balance by the refunded amount
+        if (type == 'RETURN' && partyType == 'customer') {
+          final refundCredit = resolvedCredit > 0 ? resolvedCredit : total;
+          await txn.rawUpdate('''
+            UPDATE customers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+            WHERE id = ?
+          ''', [refundCredit, DateTime.now().toIso8601String(), partyId]);
+        }
 
-      // If it's a supplier RETURN (refund from supplier), reduce our payable
-      if (type == 'RETURN' && partyType == 'supplier') {
-        await txn.rawUpdate('''
-          UPDATE suppliers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
-          WHERE id = ?
-        ''', [total, DateTime.now().toIso8601String(), partyId]);
+        // If it's a supplier RETURN (refund from supplier), reduce our payable
+        if (type == 'RETURN' && partyType == 'supplier') {
+          await txn.rawUpdate('''
+            UPDATE suppliers SET current_balance = MAX(0, current_balance - ?), updated_at = ?
+            WHERE id = ?
+          ''', [total, DateTime.now().toIso8601String(), partyId]);
+        }
       }
 
       return transactionId;
@@ -300,7 +308,10 @@ class TransactionService {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-    final result = await db.rawQuery('''
+    final start = startOfDay.toIso8601String();
+    final end = endOfDay.toIso8601String();
+
+    final salesResult = await db.rawQuery('''
       SELECT
         COUNT(*) as transaction_count,
         COALESCE(SUM(total_amount), 0) as total_sales,
@@ -309,8 +320,21 @@ class TransactionService {
       FROM transactions
       WHERE transaction_type = 'SELL'
         AND transaction_date >= ? AND transaction_date < ?
-    ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
-    return result.first;
+    ''', [start, end]);
+
+    // Credit dues cleared by customers today (previous balance payments)
+    final clearedResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as credit_cleared
+      FROM customer_payments
+      WHERE payment_date >= ? AND payment_date < ?
+    ''', [start, end]);
+
+    final row = Map<String, dynamic>.from(salesResult.first);
+    final creditCleared = (clearedResult.first['credit_cleared'] as num?)?.toDouble() ?? 0.0;
+    final cashSales = (row['cash_sales'] as num?)?.toDouble() ?? 0.0;
+    row['credit_cleared_today'] = creditCleared;
+    row['cash_collected'] = cashSales + creditCleared;
+    return row;
   }
 
   Future<Map<String, dynamic>> getTodaysPurchases() async {
@@ -318,14 +342,54 @@ class TransactionService {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
+    final start = startOfDay.toIso8601String();
+    final end = endOfDay.toIso8601String();
+
     final result = await db.rawQuery('''
       SELECT COUNT(*) as transaction_count,
-             COALESCE(SUM(total_amount), 0) as total_purchases
+             COALESCE(SUM(total_amount), 0) as total_purchases,
+             COALESCE(SUM(paid_amount), 0) as cash_purchases,
+             COALESCE(SUM(credit_amount), 0) as credit_purchases
       FROM transactions
       WHERE transaction_type = 'BUY'
         AND transaction_date >= ? AND transaction_date < ?
-    ''', [startOfDay.toIso8601String(), endOfDay.toIso8601String()]);
-    return result.first;
+    ''', [start, end]);
+
+    // Supplier dues cleared today (cash paid out for previous credit purchases)
+    final clearedResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as supplier_cleared
+      FROM supplier_payments
+      WHERE payment_date >= ? AND payment_date < ?
+    ''', [start, end]);
+
+    final row = Map<String, dynamic>.from(result.first);
+    final supplierCleared = (clearedResult.first['supplier_cleared'] as num?)?.toDouble() ?? 0.0;
+    row['supplier_cleared_today'] = supplierCleared;
+    return row;
+  }
+
+  /// Returns already-returned quantities for each (product_id, lot_id) pair
+  /// from all RETURN transactions that reference [originalTransactionId].
+  /// Result: {productId: {lotId: returnedQty}}
+  Future<Map<int, Map<int, double>>> getReturnedQuantities(int originalTransactionId) async {
+    final db = await _dbHelper.database;
+    final rows = await db.rawQuery('''
+      SELECT tl.product_id, tl.lot_id, COALESCE(SUM(tl.quantity), 0) as returned_qty
+      FROM transaction_lines tl
+      INNER JOIN transactions t ON tl.transaction_id = t.id
+      WHERE t.transaction_type = 'RETURN'
+        AND t.reference_transaction_id = ?
+      GROUP BY tl.product_id, tl.lot_id
+    ''', [originalTransactionId]);
+
+    final map = <int, Map<int, double>>{};
+    for (final row in rows) {
+      final productId = (row['product_id'] as num).toInt();
+      final lotId = (row['lot_id'] as num).toInt();
+      final qty = (row['returned_qty'] as num).toDouble();
+      map.putIfAbsent(productId, () => {})[lotId] = qty;
+    }
+    return map;
   }
 
   Future<Map<String, dynamic>> getSalesReport(DateTime startDate, DateTime endDate) async {
@@ -585,12 +649,16 @@ class TransactionService {
     required String partyType,
   }) async {
     final db = await _dbHelper.database;
+    // Only show BUY transactions for suppliers, SELL for customers.
+    // RETURN transactions are credits the OTHER party owes US — not our unpaid bills.
+    final txType = partyType == 'supplier' ? 'BUY' : 'SELL';
     return await db.rawQuery('''
       SELECT * FROM transactions
-      WHERE party_id = ? AND party_type = ? AND payment_status IN ('CREDIT', 'PARTIAL')
+      WHERE party_id = ? AND party_type = ? AND transaction_type = ?
+        AND payment_status IN ('CREDIT', 'PARTIAL')
         AND status != 'CANCELLED'
       ORDER BY transaction_date DESC
-    ''', [partyId, partyType]);
+    ''', [partyId, partyType, txType]);
   }
 
   /// Get total outstanding balance for a party across all credit transactions
@@ -599,12 +667,14 @@ class TransactionService {
     required String partyType,
   }) async {
     final db = await _dbHelper.database;
+    final txType = partyType == 'supplier' ? 'BUY' : 'SELL';
     final result = await db.rawQuery('''
       SELECT COALESCE(SUM(credit_amount), 0) as total
       FROM transactions
-      WHERE party_id = ? AND party_type = ? AND payment_status IN ('CREDIT', 'PARTIAL')
+      WHERE party_id = ? AND party_type = ? AND transaction_type = ?
+        AND payment_status IN ('CREDIT', 'PARTIAL')
         AND status != 'CANCELLED'
-    ''', [partyId, partyType]);
+    ''', [partyId, partyType, txType]);
     return (result.first['total'] as num).toDouble();
   }
 

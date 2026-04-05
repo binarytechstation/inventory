@@ -54,7 +54,11 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
       final symbol = await _currencyService.getCurrencySymbol();
       setState(() {
         _pending = all.where((i) => i.supplierReturnStatus == 'PENDING').toList();
-        _returned = all.where((i) => i.supplierReturnStatus == 'ACCEPTED').toList();
+        _returned = all
+            .where((i) =>
+                i.supplierReturnStatus == 'ACCEPTED' ||
+                i.supplierReturnStatus == 'RETURNED_TO_STOCK')
+            .toList();
         _writtenOff = all.where((i) => i.supplierReturnStatus == 'REJECTED').toList();
         _currencySymbol = symbol;
         _isLoading = false;
@@ -64,98 +68,486 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
     }
   }
 
+  // ─── Return to stock (after inspection) ───────────────────────────────────
+
+  Future<void> _returnToStock(DefectiveStockModel item) async {
+    final notesCtrl = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    final userId = Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.inventory_2, color: Colors.green.shade700, size: 22),
+          ),
+          const SizedBox(width: 10),
+          const Text('Return to Stock'),
+        ]),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Product summary card
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green.shade50, Colors.teal.shade50],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(children: [
+                Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.productName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      _dialogChip(Icons.inventory_2_outlined,
+                          'Qty: ${item.quantity.toStringAsFixed(0)}', Colors.green),
+                      const SizedBox(width: 8),
+                      _dialogChip(Icons.label_outline,
+                          item.source == 'CUSTOMER_RETURN' ? 'Customer Return' : 'Internal',
+                          Colors.purple),
+                    ]),
+                  ]),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 16),
+
+            // Inspection checklist
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.shade100),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.fact_check_outlined, size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 6),
+                  Text('Pre-restock checklist',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade800,
+                          fontSize: 13)),
+                ]),
+                const SizedBox(height: 8),
+                _checkItem('Item inspected and found to be in sellable condition'),
+                _checkItem('Packaging is acceptable or replaced'),
+                _checkItem('No functional defects confirmed'),
+              ]),
+            ),
+            const SizedBox(height: 14),
+
+            TextField(
+              controller: notesCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Inspection Notes (optional)',
+                hintText: 'e.g. Cleaned and repackaged, minor cosmetic scratch only…',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.notes_outlined),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Warning note
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${item.quantity.toStringAsFixed(0)} unit(s) will be added back to '
+                    'Lot ${item.lotId} inventory immediately.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                  ),
+                ),
+              ]),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.inventory_2, size: 16),
+            label: const Text('Confirm & Restock'),
+            style: FilledButton.styleFrom(backgroundColor: Colors.green.shade600),
+          ),
+        ],
+      ),
+    );
+
+    notesCtrl.dispose();
+    if (confirm != true || item.id == null) return;
+
+    try {
+      await _service.returnToStock(
+        defectiveId: item.id!,
+        productId: item.productId,
+        lotId: item.lotId,
+        quantity: item.quantity,
+        userId: userId,
+        notes: notesCtrl.text.isEmpty ? null : notesCtrl.text,
+      );
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+            '${item.quantity.toStringAsFixed(0)} × ${item.productName} added back to stock'),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
+      _loadData();
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Widget _checkItem(String text) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.check, size: 14, color: Colors.green.shade600),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(fontSize: 12, color: Colors.blue.shade800)),
+          ),
+        ]),
+      );
+
+  Widget _dialogChip(IconData icon, String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+        ]),
+      );
+
   // ─── Return to supplier ────────────────────────────────────────────────────
 
   Future<void> _sendToSupplier(DefectiveStockModel item) async {
     final suppliers = await _supplierService.getAllSuppliers();
     if (!mounted) return;
 
+    final messenger = ScaffoldMessenger.of(context);
+
     final notesCtrl = TextEditingController();
-    int? selectedSupplierId = suppliers.isNotEmpty ? suppliers.first.id : null;
+    // Editable refund amount — pre-fill with stored value but user can correct it
+    final refundCtrl = TextEditingController(
+        text: item.refundAmount > 0
+            ? item.refundAmount.toStringAsFixed(2)
+            : '');
+    // resolution: 'refund' = supplier credits us money, 'replacement' = supplier gives new item
+    String resolution = 'refund';
+
+    // Try to pre-select the supplier who was on the original source transaction,
+    // otherwise fall back to first in list
+    int? selectedSupplierId;
+    if (item.partyType == 'supplier' && item.partyId != null) {
+      selectedSupplierId = item.partyId;
+    } else if (suppliers.isNotEmpty) {
+      selectedSupplierId = suppliers.first.id;
+    }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('Return to Supplier'),
-          content: SizedBox(
-            width: 400,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Product summary
+        builder: (ctx, setS) {
+          // Find selected supplier for balance preview
+          final selSupplier = suppliers.firstWhere(
+            (s) => s.id == selectedSupplierId,
+            orElse: () => suppliers.isNotEmpty ? suppliers.first : suppliers.first,
+          );
+          final currentBalance = selectedSupplierId != null ? selSupplier.currentBalance : 0.0;
+          final isReplacement = resolution == 'replacement';
+          final refundAmt = double.tryParse(refundCtrl.text) ?? 0.0;
+          final refundTotal = isReplacement ? 0.0 : item.quantity * refundAmt;
+          final balanceAfter = (currentBalance - refundTotal).clamp(0.0, double.infinity);
+          final overRefund = !isReplacement && refundTotal > currentBalance && currentBalance > 0;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(children: [
               Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(item.productName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('Qty: ${item.quantity.toStringAsFixed(0)}  ·  '
-                          'Refund: $_currencySymbol${(item.quantity * item.refundAmount).toStringAsFixed(2)}',
-                          style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
-                    ]),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<int>(
-                decoration: const InputDecoration(
-                    labelText: 'Select Supplier', border: OutlineInputBorder()),
-                initialValue: selectedSupplierId,
-                items: suppliers
-                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
-                    .toList(),
-                onChanged: (v) => setS(() => selectedSupplierId = v),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: notesCtrl,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                    labelText: 'Notes (optional)', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(children: [
-                  const Icon(Icons.info_outline, size: 16, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'This will create a RETURN transaction to the supplier '
-                      'and reduce the payable balance by the refund amount.',
-                      style: TextStyle(fontSize: 12, color: Colors.blue),
+                child: Icon(Icons.local_shipping, color: Colors.blue.shade700, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text('Return to Supplier'),
+            ]),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Product summary card
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade200),
                     ),
+                    child: Row(children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.red.shade600),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(item.productName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          const SizedBox(height: 2),
+                          Text('Qty: ${item.quantity.toStringAsFixed(0)}  ·  '
+                              'Lot: ${item.lotId}',
+                              style: TextStyle(color: Colors.red.shade700, fontSize: 12)),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Supplier dropdown
+                  DropdownButtonFormField<int>(
+                    decoration: const InputDecoration(
+                        labelText: 'Select Supplier',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.store_outlined)),
+                    initialValue: selectedSupplierId,
+                    items: suppliers
+                        .map((s) => DropdownMenuItem(
+                              value: s.id,
+                              child: Row(children: [
+                                Expanded(child: Text(s.name)),
+                                if (s.currentBalance > 0)
+                                  Text('Due: $_currencySymbol${s.currentBalance.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.red.shade600,
+                                          fontWeight: FontWeight.w600)),
+                              ]),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setS(() => selectedSupplierId = v),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Resolution type — the key distinction
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(children: [
+                      _resolutionTile(
+                        icon: Icons.currency_exchange,
+                        color: Colors.green.shade600,
+                        title: 'Cash / Credit Note',
+                        subtitle: 'Supplier refunds money or issues a credit note',
+                        selected: resolution == 'refund',
+                        onTap: () => setS(() => resolution = 'refund'),
+                      ),
+                      Divider(height: 1, color: Colors.grey.shade200),
+                      _resolutionTile(
+                        icon: Icons.swap_horiz,
+                        color: Colors.blue.shade600,
+                        title: 'Replacement Product',
+                        subtitle: 'Supplier sends a new item — no money changes hands',
+                        selected: resolution == 'replacement',
+                        onTap: () => setS(() => resolution = 'replacement'),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Editable refund amount — hidden for replacement
+                  if (!isReplacement) ...[
+                  // Editable refund amount per unit
+                  Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: refundCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Refund Price (per unit)',
+                          prefixText: '$_currencySymbol ',
+                          border: const OutlineInputBorder(),
+                          helperText: 'Qty ${item.quantity.toStringAsFixed(0)} × price = total refund',
+                        ),
+                        onChanged: (_) => setS(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Computed total chip
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Column(children: [
+                        Text('Total', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                        Text('$_currencySymbol${refundTotal.toStringAsFixed(2)}',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
+                                fontSize: 14)),
+                      ]),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+
+                  // Balance impact preview (only for refund mode)
+                  if (!isReplacement && selectedSupplierId != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: overRefund ? Colors.orange.shade50 : Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: overRefund ? Colors.orange.shade300 : Colors.blue.shade200),
+                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Icon(
+                            overRefund ? Icons.warning_amber : Icons.account_balance_wallet_outlined,
+                            size: 15,
+                            color: overRefund ? Colors.orange.shade700 : Colors.blue.shade700,
+                          ),
+                          const SizedBox(width: 6),
+                          Text('Supplier Balance Impact',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: overRefund
+                                      ? Colors.orange.shade800
+                                      : Colors.blue.shade800)),
+                        ]),
+                        const SizedBox(height: 8),
+                        _balanceRow('Current due', currentBalance, Colors.red.shade700),
+                        _balanceRow('Refund deduction', refundTotal, Colors.green.shade700,
+                            prefix: '−'),
+                        const Divider(height: 12, thickness: 1),
+                        _balanceRow('Balance after return', balanceAfter,
+                            balanceAfter <= 0 ? Colors.green.shade700 : Colors.orange.shade700,
+                            bold: true),
+                        if (overRefund) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Refund exceeds current due. Please verify the refund price.',
+                            style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                          ),
+                        ],
+                      ]),
+                    ),
+                  ], // end if (!isReplacement)
+
+                  // Replacement info note
+                  if (isReplacement)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.swap_horiz, color: Colors.blue.shade700, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Supplier balance will NOT change.\n'
+                            'Ensure the replacement item is added as a new purchase.',
+                            style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: notesCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.notes_outlined)),
                   ),
                 ]),
               ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
-              icon: const Icon(Icons.local_shipping, size: 16),
-              label: const Text('Send Return'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              ElevatedButton.icon(
+                onPressed: (isReplacement || refundTotal > 0)
+                    ? () => Navigator.pop(ctx, true)
+                    : null,
+                icon: Icon(isReplacement ? Icons.swap_horiz : Icons.local_shipping, size: 16),
+                label: Text(isReplacement ? 'Confirm Replacement' : 'Send Return'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isReplacement ? Colors.blue.shade600 : Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
 
-    if (confirm != true || selectedSupplierId == null || item.id == null) return;
-    final messenger = ScaffoldMessenger.of(context);
+    if (confirm != true || selectedSupplierId == null || item.id == null) {
+      notesCtrl.dispose();
+      refundCtrl.dispose();
+      return;
+    }
+
     final supplierId = selectedSupplierId!;
+    final isReplacement = resolution == 'replacement';
+    final confirmedRefundPerUnit =
+        isReplacement ? 0.0 : (double.tryParse(refundCtrl.text) ?? item.refundAmount);
+    final confirmedTotal = item.quantity * confirmedRefundPerUnit;
+    final confirmedNotes = notesCtrl.text.isEmpty
+        ? (isReplacement ? 'Defective return — replacement received' : 'Defective return')
+        : notesCtrl.text;
+    notesCtrl.dispose();
+    refundCtrl.dispose();
+
     try {
       final txId = await _txService.createTransaction(
         type: 'RETURN',
@@ -166,31 +558,98 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
           'product_id': item.productId,
           'lot_id': item.lotId,
           'quantity': item.quantity,
-          'unit_price': item.refundAmount,
-          'subtotal': item.quantity * item.refundAmount,
+          'unit_price': confirmedRefundPerUnit,
+          'subtotal': confirmedTotal,
           'discount': 0.0,
           'tax': 0.0,
           'return_type': 'DEFECTIVE',
-          'is_refundable': item.isRefundable,
+          'is_refundable': !isReplacement,
         }],
-        subtotal: item.quantity * item.refundAmount,
+        subtotal: confirmedTotal,
         discount: 0,
         tax: 0,
-        total: item.quantity * item.refundAmount,
-        paymentMode: 'credit', // supplier refund reduces our payable
-        notes: notesCtrl.text.isEmpty ? 'Defective return' : notesCtrl.text,
+        total: confirmedTotal,
+        paymentMode: 'cash',
+        notes: confirmedNotes,
         returnType: 'DEFECTIVE',
+        skipBalanceAdjustment: isReplacement, // replacement = no money, don't touch balance
       );
       await _service.markSupplierAccepted(item.id!, txId);
       messenger.showSnackBar(SnackBar(
-        content: Text('Return sent — $_currencySymbol${(item.quantity * item.refundAmount).toStringAsFixed(2)} credited'),
-        backgroundColor: Colors.green,
+        content: Text(isReplacement
+            ? 'Replacement recorded — supplier balance unchanged'
+            : 'Return sent — $_currencySymbol${confirmedTotal.toStringAsFixed(2)} deducted from supplier balance'),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
       ));
       _loadData();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      messenger.showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     }
   }
+
+  Widget _balanceRow(String label, double amount, Color color,
+      {String prefix = '', bool bold = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(children: [
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    fontWeight: bold ? FontWeight.w600 : FontWeight.normal)),
+          ),
+          Text('$prefix$_currencySymbol${amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: bold ? FontWeight.bold : FontWeight.w600)),
+        ]),
+      );
+
+  Widget _resolutionTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: selected ? color.withValues(alpha: 0.12) : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, size: 18, color: selected ? color : Colors.grey.shade500),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: selected ? color : Colors.grey.shade700)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              ]),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, color: color, size: 20)
+            else
+              Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 20),
+          ]),
+        ),
+      );
 
   // ─── Write off ─────────────────────────────────────────────────────────────
 
@@ -525,16 +984,20 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
             ),
             // Status badge
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: statusColor.withValues(alpha: 0.4)),
               ),
-              child: Text(
-                item.supplierReturnStatus.replaceAll('_', ' '),
-                style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold),
-              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_statusIcon(item.supplierReturnStatus), size: 12, color: statusColor),
+                const SizedBox(width: 4),
+                Text(
+                  _statusLabel(item.supplierReturnStatus),
+                  style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ]),
             ),
           ]),
 
@@ -564,11 +1027,31 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
             const SizedBox(height: 10),
             const Divider(height: 1),
             const SizedBox(height: 10),
-            Row(children: [
+            Wrap(spacing: 8, runSpacing: 8, children: [
               if (!item.isRefundable)
                 Text('Supplier rejected return',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic))
               else ...[
+                // Return to Stock — primary action for customer returns after inspection
+                FilledButton.icon(
+                  onPressed: () => _returnToStock(item),
+                  icon: const Icon(Icons.inventory_2, size: 15),
+                  label: const Text('Return to Stock'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => _sendToSupplier(item),
+                  icon: const Icon(Icons.local_shipping, size: 15),
+                  label: const Text('Send to Supplier'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                ),
                 OutlinedButton.icon(
                   onPressed: () => _writeOff(item),
                   icon: const Icon(Icons.cancel, size: 15),
@@ -577,17 +1060,6 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
                     foregroundColor: Colors.grey[700],
                     side: BorderSide(color: Colors.grey.shade400),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () => _sendToSupplier(item),
-                  icon: const Icon(Icons.local_shipping, size: 15),
-                  label: const Text('Return to Supplier'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   ),
                 ),
               ],
@@ -615,9 +1087,30 @@ class _DefectiveStockScreenState extends State<DefectiveStockScreen>
   Color _statusColor(String status) {
     switch (status) {
       case 'PENDING': return Colors.orange;
-      case 'ACCEPTED': return Colors.green;
+      case 'ACCEPTED': return Colors.blue;
+      case 'RETURNED_TO_STOCK': return Colors.green;
       case 'REJECTED': return Colors.red;
       default: return Colors.grey;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'PENDING': return 'PENDING';
+      case 'ACCEPTED': return 'SUPPLIER RETURN';
+      case 'RETURNED_TO_STOCK': return 'RESTOCKED';
+      case 'REJECTED': return 'WRITTEN OFF';
+      default: return status.replaceAll('_', ' ');
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status) {
+      case 'PENDING': return Icons.pending_actions;
+      case 'ACCEPTED': return Icons.local_shipping;
+      case 'RETURNED_TO_STOCK': return Icons.inventory_2;
+      case 'REJECTED': return Icons.cancel;
+      default: return Icons.help_outline;
     }
   }
 }

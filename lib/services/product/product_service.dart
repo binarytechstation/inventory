@@ -344,9 +344,11 @@ class ProductService {
       FROM products p
       INNER JOIN stock s ON p.product_id = s.product_id AND p.lot_id = s.lot_id
       INNER JOIN lots l ON p.lot_id = l.lot_id
-      WHERE s.count <= s.reorder_level
-        AND s.reorder_level > 0
-        AND p.is_active = 1
+      WHERE p.is_active = 1
+        AND (
+          s.count = 0                                          -- out of stock: always alert
+          OR (s.reorder_level > 0 AND s.count <= s.reorder_level)  -- below reorder threshold
+        )
       ORDER BY (s.count / NULLIF(s.reorder_level, 0)) ASC
     ''');
 

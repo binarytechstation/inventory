@@ -63,15 +63,33 @@ class _CustomerReturnScreenState extends State<CustomerReturnScreen> {
       _returnItems.clear();
     });
     try {
-      final lines = await _txService.getTransactionLines(tx['id'] as int);
+      final originalTxId = tx['id'] as int;
+      final [lines, returnedQtysRaw] = await Future.wait([
+        _txService.getTransactionLines(originalTxId),
+        _txService.getReturnedQuantities(originalTxId),
+      ]);
+
+      final returnedQtys = returnedQtysRaw as Map<int, Map<int, double>>;
+
       setState(() {
-        for (final line in lines) {
+        for (final line in lines as List<Map<String, dynamic>>) {
+          final productId = line['product_id'] as int;
+          final lotId = (line['lot_id'] ?? 1) as int;
+          final originalQty = (line['quantity'] as num).toDouble();
+          final alreadyReturned = returnedQtys[productId]?[lotId] ?? 0.0;
+          final maxQty = (originalQty - alreadyReturned).clamp(0.0, originalQty);
+
+          // Skip items that have already been fully returned
+          if (maxQty <= 0) continue;
+
           _returnItems.add({
-            'product_id': line['product_id'] as int,
-            'lot_id': (line['lot_id'] ?? 1) as int,
+            'product_id': productId,
+            'lot_id': lotId,
             'product_name': line['product_name'] as String? ?? 'Product',
             'unit_price': (line['unit_price'] as num).toDouble(),
-            'max_qty': (line['quantity'] as num).toDouble(),
+            'original_qty': originalQty,
+            'already_returned': alreadyReturned,
+            'max_qty': maxQty,
             'qty': 0.0,
             'return_type': 'NORMAL',
             'reason': '',
@@ -136,6 +154,7 @@ class _CustomerReturnScreenState extends State<CustomerReturnScreen> {
         total: _totalRefund,
         paymentMode: _refundMethod, // 'cash' → physical refund, 'credit' → reduce balance
         notes: 'Return from ${widget.customer.name} | Ref: ${_selectedTx!['invoice_number']}',
+        referenceTransactionId: _selectedTx!['id'] as int,
       );
 
       if (mounted) {
@@ -259,7 +278,21 @@ class _CustomerReturnScreenState extends State<CustomerReturnScreen> {
                     child: _isLoadingLines
                         ? const Center(child: CircularProgressIndicator())
                         : _returnItems.isEmpty
-                            ? const Center(child: Text('No items in this transaction'))
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.check_circle_outline,
+                                        size: 56, color: Colors.green.shade400),
+                                    const SizedBox(height: 12),
+                                    const Text('All items have already been returned',
+                                        style: TextStyle(fontSize: 15)),
+                                    const SizedBox(height: 4),
+                                    Text('Nothing left to return from this invoice.',
+                                        style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                  ],
+                                ),
+                              )
                             : ListView.separated(
                                 padding: const EdgeInsets.all(12),
                                 itemCount: _returnItems.length,
@@ -308,9 +341,28 @@ class _CustomerReturnScreenState extends State<CustomerReturnScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(item['product_name'] as String,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Max: ${maxQty.toStringAsFixed(0)} units · '
-                    '$_currencySymbol${(item['unit_price'] as double).toStringAsFixed(2)} each',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Text('Max: ${maxQty.toStringAsFixed(0)} units · '
+                      '$_currencySymbol${(item['unit_price'] as double).toStringAsFixed(2)} each',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  if ((item['already_returned'] as double? ?? 0) > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Text(
+                        '${(item['already_returned'] as double).toStringAsFixed(0)} already returned',
+                        style: TextStyle(fontSize: 10, color: Colors.orange.shade700,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ]),
               ]),
             ),
             if (isSelected)

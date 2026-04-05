@@ -12,6 +12,8 @@ import '../settings/settings_screen.dart';
 import '../reports/reports_screen.dart';
 import '../pos/pos_screen.dart';
 import '../held_bills/held_bills_screen.dart';
+import '../transaction/purchase_order_screen.dart';
+import '../expense/expense_screen.dart';
 import '../../../services/product/product_service.dart';
 import '../../../services/transaction/transaction_service.dart';
 import '../../../services/currency/currency_service.dart';
@@ -37,6 +39,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoadingKPIs = true;  // Start with true to show loading on initial load
   String _currencySymbol = '৳';
 
+  // Navigation params — set by KPI card taps, reset by NavRail
+  int _transactionsInitialTab = 0;
+  String? _transactionsDateFilter;
+  bool _productsLowStockOnly = false;
+
   // Auto-refresh timer
   Timer? _refreshTimer;
   List<Map<String, dynamic>> _recentTransactions = [];
@@ -52,6 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Reports',
     'Users',
     'Settings',
+    'Expenses',
   ];
 
   final List<IconData> _menuIcons = [
@@ -64,6 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Icons.analytics,
     Icons.group,
     Icons.settings,
+    Icons.money_off_csred,
   ];
 
   // Get menu items based on user permissions
@@ -81,6 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (user.hasPermission('view_reports')) allowed.add(6); // Reports
     if (user.isAdmin) allowed.add(7); // Users (admin only)
     if (user.isAdmin) allowed.add(8); // Settings (admin only)
+    if (user.hasPermission('view_reports')) allowed.add(9); // Expenses
 
     return allowed;
   }
@@ -188,9 +198,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       dailyTotals[i] = 0;
     }
 
+    final today = DateTime(now.year, now.month, now.day);
+
     for (var transaction in allTransactions) {
-      final transactionDate = DateTime.parse(transaction['created_at'] as String);
-      final daysDiff = now.difference(transactionDate).inDays;
+      // Use transaction_date (the actual sale date), not created_at (DB insert time)
+      final raw = DateTime.parse(transaction['transaction_date'] as String);
+      // Strip time so day-diff is always an exact integer
+      final txDay = DateTime(raw.year, raw.month, raw.day);
+      final daysDiff = today.difference(txDay).inDays;
 
       if (daysDiff >= 0 && daysDiff <= 6) {
         final index = 6 - daysDiff;
@@ -237,6 +252,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final newIndex = allowedIndices[displayIndex];
                         setState(() {
                           _selectedIndex = newIndex;
+                          // Reset nav params when switching manually via rail
+                          _transactionsInitialTab = 0;
+                          _transactionsDateFilter = null;
+                          _productsLowStockOnly = false;
                         });
                         // Reload dashboard data when switching to dashboard
                         if (newIndex == 0) {
@@ -324,13 +343,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 0:
         return _buildDashboardView();
       case 1:
-        return const ProductsScreen();
+        return ProductsScreen(showLowStockOnly: _productsLowStockOnly);
       case 2:
         return const SuppliersScreen();
       case 3:
         return const CustomersScreen();
       case 4:
-        return const TransactionsScreen();
+        return TransactionsScreen(
+          initialTabIndex: _transactionsInitialTab,
+          initialDateFilter: _transactionsDateFilter,
+        );
       case 5:
         return const HeldBillsScreen();
       case 6:
@@ -339,6 +361,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const UsersScreen();
       case 8:
         return const SettingsScreen();
+      case 9:
+        return const ExpenseScreen();
       default:
         return _buildDashboardView();
     }
@@ -349,6 +373,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              final canCreatePurchase = authProvider.currentUser?.hasPermission('create_purchase') ?? false;
+              return Tooltip(
+                message: canCreatePurchase ? '' : 'Admin access only',
+                child: ElevatedButton.icon(
+                  onPressed: canCreatePurchase
+                      ? () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const PurchaseOrderScreen()))
+                      : null,
+                  icon: const Icon(Icons.shopping_cart_outlined),
+                  label: const Text('New Purchase'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: canCreatePurchase ? Colors.blue.shade600 : Colors.grey,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
           Consumer<AuthProvider>(
             builder: (context, authProvider, child) {
               final canCreateSale = authProvider.currentUser?.hasPermission('create_sale') ?? false;
@@ -412,45 +457,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisCount: 4,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.5,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.45,
               children: [
+                // ── Today's Sales ───────────────────────────────
                 _buildKPICard(
                   'Today\'s Sales',
                   _todaysSales != null
                       ? '$_currencySymbol${(_todaysSales!['total_sales'] as num).toStringAsFixed(2)}'
                       : '...',
-                  Icons.shopping_cart,
+                  Icons.point_of_sale,
                   Colors.green,
                   subtitle: _todaysSales != null
                       ? '${_todaysSales!['transaction_count']} transactions'
                       : null,
+                  subMetrics: _todaysSales == null ? null : [
+                    (
+                      label: 'Cash Collected',
+                      value: '$_currencySymbol${(_todaysSales!['cash_collected'] as num).toStringAsFixed(2)}',
+                      color: Colors.green.shade700,
+                    ),
+                    (
+                      label: 'Credit (Due)',
+                      value: '$_currencySymbol${(_todaysSales!['credit_sales'] as num).toStringAsFixed(2)}',
+                      color: Colors.orange.shade700,
+                    ),
+                    if ((_todaysSales!['credit_cleared_today'] as num) > 0)
+                      (
+                        label: 'Due Cleared',
+                        value: '$_currencySymbol${(_todaysSales!['credit_cleared_today'] as num).toStringAsFixed(2)}',
+                        color: Colors.teal.shade700,
+                      ),
+                  ],
+                  onTap: () => setState(() {
+                    _transactionsInitialTab = 1;
+                    _transactionsDateFilter = 'today';
+                    _selectedIndex = 4;
+                  }),
                 ),
+
+                // ── Today's Purchases ────────────────────────────
                 _buildKPICard(
                   'Today\'s Purchases',
                   _todaysPurchases != null
                       ? '$_currencySymbol${(_todaysPurchases!['total_purchases'] as num).toStringAsFixed(2)}'
                       : '...',
-                  Icons.add_shopping_cart,
+                  Icons.shopping_cart,
                   Colors.blue,
                   subtitle: _todaysPurchases != null
                       ? '${_todaysPurchases!['transaction_count']} orders'
                       : null,
+                  subMetrics: _todaysPurchases == null ? null : [
+                    (
+                      label: 'Cash Paid',
+                      value: '$_currencySymbol${(_todaysPurchases!['cash_purchases'] as num).toStringAsFixed(2)}',
+                      color: Colors.blue.shade700,
+                    ),
+                    (
+                      label: 'Credit (Due)',
+                      value: '$_currencySymbol${(_todaysPurchases!['credit_purchases'] as num).toStringAsFixed(2)}',
+                      color: Colors.orange.shade700,
+                    ),
+                    if ((_todaysPurchases!['supplier_cleared_today'] as num) > 0)
+                      (
+                        label: 'Supplier Paid',
+                        value: '$_currencySymbol${(_todaysPurchases!['supplier_cleared_today'] as num).toStringAsFixed(2)}',
+                        color: Colors.teal.shade700,
+                      ),
+                  ],
+                  onTap: () => setState(() {
+                    _transactionsInitialTab = 0;
+                    _transactionsDateFilter = 'today';
+                    _selectedIndex = 4;
+                  }),
                 ),
+
+                // ── Low Stock ────────────────────────────────────
                 _buildKPICard(
                   'Low Stock Items',
                   _lowStockCount.toString(),
                   Icons.warning_amber,
                   Colors.orange,
                   subtitle: 'Needs reorder',
+                  onTap: () => setState(() {
+                    _productsLowStockOnly = true;
+                    _selectedIndex = 1;
+                  }),
                 ),
+
+                // ── Total Products ───────────────────────────────
                 _buildKPICard(
                   'Total Products',
                   _totalProducts.toString(),
                   Icons.inventory_2,
                   Colors.purple,
                   subtitle: 'In catalog',
+                  onTap: () => setState(() {
+                    _productsLowStockOnly = false;
+                    _selectedIndex = 1;
+                  }),
                 ),
               ],
             ),
@@ -512,61 +618,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Sales Trend (Last 7 Days)',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Row(
+                            children: [
+                              const Text(
+                                'Sales Trend (Last 7 Days)',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.blue.shade200),
+                                ),
+                                child: Row(children: [
+                                  Icon(Icons.bar_chart, size: 13, color: Colors.blue.shade600),
+                                  const SizedBox(width: 4),
+                                  Text('Daily', style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
+                                ]),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 20),
                           SizedBox(
                             height: 200,
                             child: _salesChartData.isEmpty
                                 ? const Center(
-                                    child: Text(
-                                      'No sales data available',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
+                                    child: Text('No sales data available',
+                                        style: TextStyle(color: Colors.grey)),
                                   )
-                                : LineChart(
-                                    LineChartData(
-                                      gridData: FlGridData(
-                                        show: true,
-                                        drawVerticalLine: false,
-                                        horizontalInterval: 1,
-                                        getDrawingHorizontalLine: (value) {
-                                          return FlLine(
-                                            color: Colors.grey.withValues(alpha: 0.2),
-                                            strokeWidth: 1,
-                                          );
-                                        },
+                                : BarChart(
+                                    BarChartData(
+                                      alignment: BarChartAlignment.spaceAround,
+                                      maxY: () {
+                                        final maxVal = _salesChartData.map((e) => e.y).reduce((a, b) => a > b ? a : b);
+                                        return maxVal <= 0 ? 100.0 : maxVal * 1.3;
+                                      }(),
+                                      barTouchData: BarTouchData(
+                                        enabled: true,
+                                        touchTooltipData: BarTouchTooltipData(
+                                          getTooltipColor: (_) => Colors.blueGrey.shade800,
+                                          tooltipRoundedRadius: 8,
+                                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                            final now = DateTime.now();
+                                            final date = now.subtract(Duration(days: 6 - group.x));
+                                            return BarTooltipItem(
+                                              '${date.day}/${date.month}\n',
+                                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                              children: [
+                                                TextSpan(
+                                                  text: '$_currencySymbol${rod.toY.toStringAsFixed(0)}',
+                                                  style: TextStyle(color: Colors.blue.shade200, fontSize: 12),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
                                       ),
                                       titlesData: FlTitlesData(
                                         show: true,
-                                        rightTitles: const AxisTitles(
-                                          sideTitles: SideTitles(showTitles: false),
-                                        ),
-                                        topTitles: const AxisTitles(
-                                          sideTitles: SideTitles(showTitles: false),
-                                        ),
+                                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                                         bottomTitles: AxisTitles(
                                           sideTitles: SideTitles(
                                             showTitles: true,
-                                            reservedSize: 30,
-                                            interval: 1,
-                                            getTitlesWidget: (double value, TitleMeta meta) {
-                                              const style = TextStyle(
-                                                color: Colors.grey,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 10,
-                                              );
+                                            reservedSize: 28,
+                                            getTitlesWidget: (value, meta) {
                                               final now = DateTime.now();
                                               final date = now.subtract(Duration(days: 6 - value.toInt()));
+                                              final isToday = value.toInt() == 6;
                                               return SideTitleWidget(
                                                 axisSide: meta.axisSide,
-                                                space: 8,
-                                                child: Text('${date.day}/${date.month}', style: style),
+                                                space: 6,
+                                                child: Text(
+                                                  '${date.day}/${date.month}',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                                    color: isToday ? Colors.blue.shade700 : Colors.grey,
+                                                  ),
+                                                ),
                                               );
                                             },
                                           ),
@@ -574,54 +706,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         leftTitles: AxisTitles(
                                           sideTitles: SideTitles(
                                             showTitles: true,
-                                            interval: null,
-                                            reservedSize: 42,
-                                            getTitlesWidget: (double value, TitleMeta meta) {
-                                              return Text(
-                                                value.toInt().toString(),
-                                                style: const TextStyle(
-                                                  color: Colors.grey,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 10,
-                                                ),
-                                              );
+                                            reservedSize: 46,
+                                            getTitlesWidget: (value, meta) {
+                                              if (value == 0) return const Text('');
+                                              final label = value >= 1000
+                                                  ? '${(value / 1000).toStringAsFixed(1)}k'
+                                                  : value.toInt().toString();
+                                              return Text(label,
+                                                  style: const TextStyle(fontSize: 9, color: Colors.grey));
                                             },
                                           ),
                                         ),
                                       ),
-                                      borderData: FlBorderData(
+                                      gridData: FlGridData(
                                         show: true,
-                                        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                                        drawVerticalLine: false,
+                                        getDrawingHorizontalLine: (_) =>
+                                            FlLine(color: Colors.grey.withValues(alpha: 0.15), strokeWidth: 1),
                                       ),
-                                      minX: 0,
-                                      maxX: 6,
-                                      minY: 0,
-                                      maxY: _salesChartData.map((e) => e.y).reduce((a, b) => a > b ? a : b) * 1.2,
-                                      lineBarsData: [
-                                        LineChartBarData(
-                                          spots: _salesChartData,
-                                          isCurved: true,
-                                          curveSmoothness: 0.3,
-                                          color: Colors.blue,
-                                          barWidth: 3,
-                                          isStrokeCapRound: true,
-                                          dotData: FlDotData(
-                                            show: true,
-                                            getDotPainter: (spot, percent, barData, index) {
-                                              return FlDotCirclePainter(
-                                                radius: 4,
-                                                color: Colors.blue,
-                                                strokeWidth: 2,
-                                                strokeColor: Colors.white,
-                                              );
-                                            },
-                                          ),
-                                          belowBarData: BarAreaData(
-                                            show: true,
-                                            color: Colors.blue.withValues(alpha: 0.1),
-                                          ),
-                                        ),
-                                      ],
+                                      borderData: FlBorderData(show: false),
+                                      barGroups: _salesChartData.map((spot) {
+                                        final isToday = spot.x.toInt() == 6;
+                                        final hasData = spot.y > 0;
+                                        return BarChartGroupData(
+                                          x: spot.x.toInt(),
+                                          barRods: [
+                                            BarChartRodData(
+                                              toY: spot.y,
+                                              width: 22,
+                                              borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                                              color: hasData
+                                                  ? (isToday ? Colors.blue.shade600 : Colors.blue.shade300)
+                                                  : Colors.grey.shade200,
+                                              backDrawRodData: BackgroundBarChartRodData(
+                                                show: true,
+                                                toY: _salesChartData.map((e) => e.y).reduce((a, b) => a > b ? a : b) * 1.3,
+                                                color: Colors.grey.withValues(alpha: 0.06),
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }).toList(),
                                     ),
                                   ),
                           ),
@@ -717,9 +842,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildKPICard(String title, String value, IconData icon, Color color, {String? subtitle}) {
+  Widget _buildKPICard(
+    String title,
+    String value,
+    IconData icon,
+    Color color, {
+    String? subtitle,
+    VoidCallback? onTap,
+    List<({String label, String value, Color color})>? subMetrics,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: _buildKPICardContent(
+          title, value, icon, color,
+          isDark: isDark,
+          subtitle: subtitle,
+          subMetrics: subMetrics,
+          hasOnTap: onTap != null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKPICardContent(
+    String title,
+    String value,
+    IconData icon,
+    Color color, {
+    required bool isDark,
+    String? subtitle,
+    List<({String label, String value, Color color})>? subMetrics,
+    bool hasOnTap = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -729,7 +889,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark
             ? color.withValues(alpha: 0.3)
@@ -745,35 +905,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [color.withValues(alpha: 0.8), color],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
                         color: color.withValues(alpha: 0.3),
-                        blurRadius: 6,
+                        blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Icon(icon, color: Colors.white, size: 22),
+                  child: Icon(icon, color: Colors.white, size: 16),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -782,13 +942,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.trending_up, color: Colors.green, size: 12),
-                      const SizedBox(width: 3),
+                      Icon(Icons.trending_up, color: Colors.green, size: 10),
+                      const SizedBox(width: 2),
                       Text(
                         'Live',
                         style: TextStyle(
                           color: isDark ? Colors.green[400] : Colors.green[700],
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -797,14 +957,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 26,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: color,
                     letterSpacing: -0.5,
@@ -812,23 +972,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   title,
                   style: TextStyle(
                     color: isDark ? Colors.grey[300] : Colors.grey[700],
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 1),
                   Text(
                     subtitle,
                     style: TextStyle(
                       color: isDark ? Colors.grey[400] : Colors.grey[500],
-                      fontSize: 11,
+                      fontSize: 10,
                     ),
+                  ),
+                ],
+                // Sub-metrics (Cash / Credit breakdown)
+                if (subMetrics != null && subMetrics.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  const Divider(height: 1, thickness: 0.5),
+                  const SizedBox(height: 4),
+                  ...subMetrics.map((m) => Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          m.label,
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                        Text(
+                          m.value,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: m.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+                // Tap hint
+                if (hasOnTap) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'View details',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: color.withValues(alpha: 0.7),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(Icons.arrow_forward_ios, size: 9, color: color.withValues(alpha: 0.7)),
+                    ],
                   ),
                 ],
               ],

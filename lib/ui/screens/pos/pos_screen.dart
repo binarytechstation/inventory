@@ -1689,7 +1689,7 @@ class _POSScreenState extends State<POSScreen> {
 
     return Column(
       children: [
-        // Customer selection
+        // Customer selection (always visible at top)
         Container(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           decoration: BoxDecoration(
@@ -1779,41 +1779,39 @@ class _POSScreenState extends State<POSScreen> {
             ],
           ),
         ),
-        // Cart items
+        // Cart items + checkout info — scrollable together
         Expanded(
-          child: _cart.isEmpty
-              ? LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxHeight < 120;
-                    return Center(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Cart items
+                if (_cart.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (!compact) ...[
-                            Icon(Icons.shopping_cart_outlined,
-                                size: 48, color: Colors.grey.shade400),
-                            const SizedBox(height: 10),
-                          ],
-                          Text(
-                            'Cart is empty',
-                            style: TextStyle(
-                                color: Colors.grey.shade500, fontSize: 13),
-                          ),
+                          Icon(Icons.shopping_cart_outlined,
+                              size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 10),
+                          Text('Cart is empty',
+                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
                         ],
                       ),
-                    );
-                  },
-                )
-              : ListView.builder(
-                  itemCount: _cart.length,
-                  itemBuilder: (context, index) {
-                    final cartItem = _cart.values.elementAt(index);
-                    return _buildCartItem(cartItem);
-                  },
-                ),
+                    ),
+                  )
+                else
+                  ..._cart.values.map((item) => _buildCartItem(item)),
+                // Payment method, discount, totals
+                _buildCheckoutSection(),
+              ],
+            ),
+          ),
         ),
-        // Checkout section
-        _buildCheckoutSection(),
+        // Action buttons — always pinned at bottom
+        _buildCheckoutActions(),
       ],
     );
   }
@@ -2890,64 +2888,72 @@ class _POSScreenState extends State<POSScreen> {
             ),
           ),
 
-          // Action buttons
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: OutlinedButton.icon(
-                    onPressed: _cart.isEmpty ? null : _clearCart,
-                    icon: const Icon(Icons.clear_all),
-                    label: const Text('Clear Cart'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: BorderSide(color: Colors.red.shade300, width: 2),
-                      foregroundColor: Colors.red.shade700,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckoutActions() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: OutlinedButton.icon(
+              onPressed: _cart.isEmpty ? null : _clearCart,
+              icon: const Icon(Icons.clear_all),
+              label: const Text('Clear Cart'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                side: BorderSide(color: Colors.red.shade300, width: 2),
+                foregroundColor: Colors.red.shade700,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 3,
-                  child: ElevatedButton.icon(
-                    onPressed: _cart.isEmpty || _isLoading
-                        ? null
-                        : _completeSale,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.check_circle, size: 22),
-                    label: Text(
-                      _isLoading ? 'Processing...' : 'Complete Sale',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 3,
+            child: ElevatedButton.icon(
+              onPressed: _cart.isEmpty || _isLoading ? null : _completeSale,
+              icon: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 4,
-                      shadowColor: Colors.green.shade300,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
+                    )
+                  : const Icon(Icons.check_circle, size: 22),
+              label: Text(
+                _isLoading ? 'Processing...' : 'Complete Sale',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 4,
+                shadowColor: Colors.green.shade300,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
+              ),
             ),
           ),
         ],

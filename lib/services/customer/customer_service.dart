@@ -5,15 +5,38 @@ import '../../data/models/customer_model.dart';
 class CustomerService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
+  /// Balance subquery: sum of remaining credit on unpaid SELL transactions only.
+  /// Derived from transaction data — never the stale stored counter.
+  static const _balanceSubquery = '''
+    COALESCE((
+      SELECT SUM(t.credit_amount)
+      FROM transactions t
+      WHERE t.party_id = c.id AND t.party_type = 'customer'
+        AND t.transaction_type = 'SELL'
+        AND t.payment_status IN ('CREDIT', 'PARTIAL')
+        AND t.status != 'CANCELLED'
+    ), 0)
+  ''';
+
   Future<List<CustomerModel>> getAllCustomers({String sortBy = 'name'}) async {
     final db = await _dbHelper.database;
-    final maps = await db.query('customers', where: 'is_active = ?', whereArgs: [1], orderBy: sortBy);
+    final maps = await db.rawQuery('''
+      SELECT c.*, $_balanceSubquery as current_balance
+      FROM customers c
+      WHERE c.is_active = 1
+      ORDER BY c.$sortBy
+    ''');
     return maps.map((m) => CustomerModel.fromMap(m)).toList();
   }
 
   Future<CustomerModel?> getCustomerById(int id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query('customers', where: 'id = ? AND is_active = ?', whereArgs: [id, 1], limit: 1);
+    final maps = await db.rawQuery('''
+      SELECT c.*, $_balanceSubquery as current_balance
+      FROM customers c
+      WHERE c.id = ? AND c.is_active = 1
+      LIMIT 1
+    ''', [id]);
     if (maps.isEmpty) return null;
     return CustomerModel.fromMap(maps.first);
   }
@@ -66,8 +89,12 @@ class CustomerService {
 
   Future<List<CustomerModel>> getCustomersWithCredit() async {
     final db = await _dbHelper.database;
-    final maps = await db.query('customers',
-        where: 'is_active = ? AND current_balance > ?', whereArgs: [1, 0], orderBy: 'current_balance DESC');
+    final maps = await db.rawQuery('''
+      SELECT c.*, $_balanceSubquery as current_balance
+      FROM customers c
+      WHERE c.is_active = 1 AND ($_balanceSubquery) > 0
+      ORDER BY current_balance DESC
+    ''');
     return maps.map((m) => CustomerModel.fromMap(m)).toList();
   }
 
@@ -92,8 +119,16 @@ class CustomerService {
   /// Total receivable from all customers
   Future<double> getTotalReceivable() async {
     final db = await _dbHelper.database;
-    final result = await db.rawQuery(
-        'SELECT COALESCE(SUM(current_balance), 0) as total FROM customers WHERE is_active = 1');
+    final result = await db.rawQuery('''
+      SELECT COALESCE(SUM(
+        (SELECT SUM(t.credit_amount) FROM transactions t
+         WHERE t.party_id = c.id AND t.party_type = 'customer'
+           AND t.transaction_type = 'SELL'
+           AND t.payment_status IN ('CREDIT', 'PARTIAL')
+           AND t.status != 'CANCELLED')
+      ), 0) as total
+      FROM customers c WHERE c.is_active = 1
+    ''');
     return (result.first['total'] as num).toDouble();
   }
 
@@ -101,20 +136,43 @@ class CustomerService {
     final db = await _dbHelper.database;
     final result = await db.rawQuery('''
       SELECT
-        COUNT(t.id) as total_purchases,
-        COALESCE(SUM(t.total_amount), 0) as total_amount,
-        COALESCE(SUM(t.paid_amount), 0)
+        COUNT(CASE WHEN t.transaction_type = 'SELL' THEN 1 END) as total_purchases,
+
+        -- Gross sales amount
+        COALESCE(SUM(CASE WHEN t.transaction_type = 'SELL' THEN t.total_amount ELSE 0 END), 0)
+          as gross_amount,
+
+        -- Total value of returned goods
+        COALESCE(SUM(CASE WHEN t.transaction_type = 'RETURN' THEN t.total_amount ELSE 0 END), 0)
+          as total_returns,
+
+        -- Net amount = sales - returns
+        COALESCE(SUM(CASE WHEN t.transaction_type = 'SELL' THEN t.total_amount ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN t.transaction_type = 'RETURN' THEN t.total_amount ELSE 0 END), 0)
+          as total_amount,
+
+        -- Net collected = cash paid on sales + manual payments - cash refunded on returns
+        COALESCE(SUM(CASE WHEN t.transaction_type = 'SELL' THEN t.paid_amount ELSE 0 END), 0)
           + COALESCE((SELECT SUM(amount) FROM customer_payments WHERE customer_id = ?), 0)
+          - COALESCE(SUM(CASE WHEN t.transaction_type = 'RETURN' THEN t.paid_amount ELSE 0 END), 0)
           as total_paid,
-        (SELECT current_balance FROM customers WHERE id = ?) as total_credit,
+
+        -- Outstanding = remaining credit on unpaid SELL invoices only
+        (SELECT COALESCE(SUM(credit_amount), 0) FROM transactions
+         WHERE party_id = ? AND party_type = 'customer' AND transaction_type = 'SELL'
+           AND payment_status IN ('CREDIT', 'PARTIAL') AND status != 'CANCELLED')
+          as total_credit,
+
         MAX(t.transaction_date) as last_purchase_date
       FROM transactions t
-      WHERE t.party_id = ? AND t.party_type = 'customer' AND t.transaction_type = 'SELL'
+      WHERE t.party_id = ? AND t.party_type = 'customer'
+        AND t.transaction_type IN ('SELL', 'RETURN')
         AND t.status != 'CANCELLED'
     ''', [customerId, customerId, customerId]);
     return result.isNotEmpty ? result.first : {
-      'total_purchases': 0, 'total_amount': 0.0,
-      'total_paid': 0.0, 'total_credit': 0.0, 'last_purchase_date': null,
+      'total_purchases': 0, 'gross_amount': 0.0, 'total_returns': 0.0,
+      'total_amount': 0.0, 'total_paid': 0.0, 'total_credit': 0.0,
+      'last_purchase_date': null,
     };
   }
 

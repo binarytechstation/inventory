@@ -266,103 +266,349 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   }
 
   Widget _buildOverviewTab(CustomerModel customer, ThemeData theme, bool hasDue) {
+    final isDark = theme.brightness == Brightness.dark;
     final nearLimit = customer.creditLimit > 0 &&
         customer.currentBalance >= customer.creditLimit * 0.8;
+
+    final grossAmount   = (_stats['gross_amount']    as num?)?.toDouble() ?? 0;
+    final totalReturns  = (_stats['total_returns']   as num?)?.toDouble() ?? 0;
+    final netAmount     = (_stats['total_amount']    as num?)?.toDouble() ?? 0;
+    final collected     = (_stats['total_paid']      as num?)?.toDouble() ?? 0;
+    final outstanding   = (_stats['total_credit']    as num?)?.toDouble() ?? 0;
+    final totalSales    = (_stats['total_purchases'] as num?)?.toInt()    ?? 0;
+    final lastPurchaseStr = _stats['last_purchase_date'] as String?;
+    final lastPurchase  = lastPurchaseStr != null ? DateTime.tryParse(lastPurchaseStr) : null;
+    final avgOrder      = totalSales > 0 ? grossAmount / totalSales : 0.0;
+    final collectionRate = netAmount > 0 ? (collected / netAmount).clamp(0.0, 1.0) : (collected > 0 ? 1.0 : 0.0);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Balance card
-        if (hasDue)
-          Card(
-            color: Colors.orange.shade50,
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                Icon(Icons.account_balance_wallet, color: Colors.orange.shade700, size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Outstanding Balance', style: TextStyle(color: Colors.orange.shade700)),
-                    Text('৳${customer.currentBalance.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
-                    if (customer.creditLimit > 0)
-                      Text('Credit limit: ৳${customer.creditLimit.toStringAsFixed(2)}',
-                          style: TextStyle(color: nearLimit ? Colors.red : Colors.grey, fontSize: 12)),
-                  ]),
-                ),
-                ElevatedButton(
-                  onPressed: _showCollectPaymentDialog,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
-                  child: const Text('Collect', style: TextStyle(color: Colors.white)),
-                ),
-              ]),
-            ),
-          ),
 
-        if (nearLimit)
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.red.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red.shade300),
-            ),
-            child: Row(children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Near credit limit — collect payment before new orders.',
-                  style: TextStyle(color: Colors.red.shade700))),
-            ]),
-          ),
-
-        // Stats
-        Row(children: [
-          _statCard('Total Sales', '${_stats['total_purchases'] ?? 0}', Icons.shopping_bag, theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          _statCard('Total Amount', '৳${((_stats['total_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.currency_exchange, Colors.green),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _statCard('Collected', '৳${((_stats['total_paid'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.check_circle, Colors.teal),
-          const SizedBox(width: 12),
-          _statCard('Outstanding', '৳${((_stats['total_credit'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-              Icons.credit_card, Colors.orange),
-        ]),
-        const SizedBox(height: 16),
-
-        // Contact info
+        // ── Financial Summary ───────────────────────────────────
         Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Contact Info', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const Divider(),
-              if (customer.companyName != null && customer.companyName!.isNotEmpty)
-                _infoRow(Icons.business, 'Company', customer.companyName!),
-              if (customer.phone != null)
-                _infoRow(Icons.phone, 'Phone', customer.phone!),
-              if (customer.email != null)
-                _infoRow(Icons.email, 'Email', customer.email!),
-              if (customer.address != null)
-                _infoRow(Icons.location_on, 'Address', customer.address!),
-              if (customer.notes != null && customer.notes!.isNotEmpty)
-                _infoRow(Icons.notes, 'Notes', customer.notes!),
+              // Card header
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.bar_chart_rounded, color: theme.colorScheme.primary, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text('Financial Summary',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                if (lastPurchase != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('Last: ${_formatDate(lastPurchase)}',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                  ),
+              ]),
+              const SizedBox(height: 16),
+
+              // Row 1: Gross Sales | Returns | Net Amount
+              Row(children: [
+                _financeMetric('Gross Sales', grossAmount, Icons.sell_outlined, Colors.blue.shade600, isDark),
+                const SizedBox(width: 8),
+                _financeMetric('Returns', totalReturns, Icons.keyboard_return, Colors.red.shade400, isDark),
+                const SizedBox(width: 8),
+                _financeMetric('Net Amount', netAmount, Icons.currency_exchange, Colors.green.shade600, isDark, highlighted: true),
+              ]),
+              const SizedBox(height: 8),
+
+              // Row 2: Collected | Outstanding | # Orders
+              Row(children: [
+                _financeMetric('Collected', collected, Icons.check_circle_outline, Colors.teal.shade600, isDark),
+                const SizedBox(width: 8),
+                _financeMetric('Outstanding', outstanding, Icons.pending_outlined,
+                    outstanding > 0 ? Colors.orange.shade700 : Colors.grey.shade400, isDark,
+                    highlighted: outstanding > 0),
+                const SizedBox(width: 8),
+                _financeMetricCount('Orders', totalSales, Icons.shopping_bag_outlined,
+                    theme.colorScheme.primary, isDark),
+              ]),
+
+              // Payment Completion bar
+              if (netAmount > 0 || collected > 0) ...[
+                const SizedBox(height: 16),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Payment Completion',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                  Text('${(collectionRate * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold,
+                        color: collectionRate >= 1.0 ? Colors.green.shade700 : Colors.orange.shade700,
+                      )),
+                ]),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: collectionRate,
+                    minHeight: 10,
+                    backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation(
+                      collectionRate >= 1.0 ? Colors.green.shade600 : Colors.orange.shade600),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Collected: ৳${collected.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 11, color: Colors.teal.shade600)),
+                  if (outstanding > 0)
+                    Text('Due: ৳${outstanding.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: 11, color: Colors.orange.shade700)),
+                ]),
+              ],
             ]),
           ),
         ),
 
-        // Unpaid bills
+        const SizedBox(height: 12),
+
+        // ── Customer Profile ────────────────────────────────────
+        Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.blueGrey.shade800 : Colors.blueGrey.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.person_outline, color: Colors.blueGrey.shade600, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text('Customer Profile',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              ]),
+              const SizedBox(height: 14),
+
+              // Avg order + member since
+              Row(children: [
+                Expanded(child: _profileTile(
+                  'Avg. Order Value',
+                  avgOrder > 0 ? '৳${avgOrder.toStringAsFixed(2)}' : '—',
+                  Icons.receipt_long, Colors.indigo, isDark,
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: _profileTile(
+                  'Member Since',
+                  _formatDate(customer.createdAt),
+                  Icons.calendar_today, Colors.blueGrey, isDark,
+                )),
+              ]),
+
+              // Credit limit row
+              if (customer.creditLimit > 0) ...[
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _profileTile(
+                    'Credit Limit',
+                    '৳${customer.creditLimit.toStringAsFixed(2)}',
+                    Icons.credit_score, Colors.teal, isDark,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _profileTile(
+                    'Credit Used',
+                    '৳${customer.currentBalance.toStringAsFixed(2)}',
+                    Icons.credit_card, nearLimit ? Colors.red : Colors.orange, isDark,
+                  )),
+                ]),
+                if (nearLimit) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: (customer.currentBalance / customer.creditLimit).clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: Colors.grey.shade200,
+                      valueColor: const AlwaysStoppedAnimation(Colors.red),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Icon(Icons.warning_amber_rounded, size: 14, color: Colors.red.shade700),
+                    const SizedBox(width: 4),
+                    Text('Near credit limit — collect payment before new orders.',
+                        style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
+                  ]),
+                ],
+              ],
+
+              // Contact info
+              if (customer.phone != null || customer.email != null ||
+                  customer.address != null || (customer.companyName != null && customer.companyName!.isNotEmpty)) ...[
+                const Divider(height: 24),
+                Text('Contact', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                const SizedBox(height: 8),
+                if (customer.companyName != null && customer.companyName!.isNotEmpty)
+                  _infoRow(Icons.business, 'Company', customer.companyName!),
+                if (customer.phone != null)
+                  _infoRow(Icons.phone, 'Phone', customer.phone!),
+                if (customer.email != null)
+                  _infoRow(Icons.email, 'Email', customer.email!),
+                if (customer.address != null)
+                  _infoRow(Icons.location_on, 'Address', customer.address!),
+                if (customer.notes != null && customer.notes!.isNotEmpty)
+                  _infoRow(Icons.notes, 'Notes', customer.notes!),
+              ],
+            ]),
+          ),
+        ),
+
+        // ── Outstanding Balance ─────────────────────────────────
+        if (hasDue) ...[
+          const SizedBox(height: 12),
+          Card(
+            color: isDark ? Colors.orange.shade900.withValues(alpha: 0.25) : Colors.orange.shade50,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.orange.shade300, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.account_balance_wallet, color: Colors.orange.shade800, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Outstanding Balance',
+                      style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text('৳${customer.currentBalance.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+                  if (customer.creditLimit > 0)
+                    Text('Limit: ৳${customer.creditLimit.toStringAsFixed(2)}',
+                        style: TextStyle(color: nearLimit ? Colors.red : Colors.grey, fontSize: 12)),
+                ])),
+                ElevatedButton.icon(
+                  onPressed: _showCollectPaymentDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade700,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.payments, color: Colors.white, size: 18),
+                  label: const Text('Collect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ]),
+            ),
+          ),
+        ],
+
+        // ── Unpaid Bills ────────────────────────────────────────
         if (_creditTransactions.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Unpaid Bills', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Row(children: [
+            Icon(Icons.pending_actions, size: 18, color: Colors.orange.shade700),
+            const SizedBox(width: 6),
+            Text('Unpaid Bills',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('${_creditTransactions.length}',
+                  style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+          ]),
           const SizedBox(height: 8),
           ..._creditTransactions.map((tx) => _buildCreditTxCard(tx, theme)),
         ],
+      ]),
+    );
+  }
+
+  Widget _financeMetric(String label, double value, IconData icon, Color color, bool isDark,
+      {bool highlighted = false}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: highlighted
+              ? color.withValues(alpha: isDark ? 0.18 : 0.08)
+              : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade50),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: highlighted ? color.withValues(alpha: 0.35) : Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(height: 5),
+          Text('৳${value.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: highlighted ? color : null,
+              )),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500), overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
+
+  Widget _financeMetricCount(String label, int count, IconData icon, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(height: 5),
+          Text('$count',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _profileTile(String label, String value, IconData icon, Color color, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.15 : 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+              overflow: TextOverflow.ellipsis),
+        ])),
       ]),
     );
   }
@@ -873,24 +1119,6 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
                   fontWeight: bold ? FontWeight.bold : FontWeight.normal,
                   color: color)),
         ],
-      ),
-    );
-  }
-
-  Widget _statCard(String label, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 8),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ])),
-          ]),
-        ),
       ),
     );
   }

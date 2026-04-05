@@ -223,6 +223,7 @@ class DatabaseSchema {
       notes TEXT,
       currency_code TEXT DEFAULT 'BDT',
       currency_symbol TEXT DEFAULT '৳',
+      reference_transaction_id INTEGER,
       created_by INTEGER,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -637,6 +638,23 @@ class DatabaseSchema {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (product_id, lot_id) REFERENCES products(product_id, lot_id),
       FOREIGN KEY (reported_by) REFERENCES users(id)
+    )
+  ''';
+
+  // Expenses table — records any business expense (rent, salary, utilities, etc.)
+  static const String createExpensesTable = '''
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT DEFAULT 'General',
+      expense_date TEXT NOT NULL,
+      payment_method TEXT DEFAULT 'cash',
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id)
     )
   ''';
 

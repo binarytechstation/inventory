@@ -5,15 +5,39 @@ import '../../data/models/supplier_model.dart';
 class SupplierService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
+  /// Balance subquery: sum of remaining credit on unpaid BUY transactions only.
+  /// This is the source of truth — derived from transaction data, not a stored counter
+  /// which can drift when RETURN transactions (incorrectly) reduce it.
+  static const _balanceSubquery = '''
+    COALESCE((
+      SELECT SUM(t.credit_amount)
+      FROM transactions t
+      WHERE t.party_id = s.id AND t.party_type = 'supplier'
+        AND t.transaction_type = 'BUY'
+        AND t.payment_status IN ('CREDIT', 'PARTIAL')
+        AND t.status != 'CANCELLED'
+    ), 0)
+  ''';
+
   Future<List<SupplierModel>> getAllSuppliers({String sortBy = 'name'}) async {
     final db = await _dbHelper.database;
-    final maps = await db.query('suppliers', where: 'is_active = ?', whereArgs: [1], orderBy: sortBy);
+    final maps = await db.rawQuery('''
+      SELECT s.*, $_balanceSubquery as current_balance
+      FROM suppliers s
+      WHERE s.is_active = 1
+      ORDER BY s.$sortBy
+    ''');
     return maps.map((m) => SupplierModel.fromMap(m)).toList();
   }
 
   Future<SupplierModel?> getSupplierById(int id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query('suppliers', where: 'id = ? AND is_active = ?', whereArgs: [id, 1], limit: 1);
+    final maps = await db.rawQuery('''
+      SELECT s.*, $_balanceSubquery as current_balance
+      FROM suppliers s
+      WHERE s.id = ? AND s.is_active = 1
+      LIMIT 1
+    ''', [id]);
     if (maps.isEmpty) return null;
     return SupplierModel.fromMap(maps.first);
   }
@@ -78,16 +102,29 @@ class SupplierService {
   /// Get all suppliers (dealers) who have outstanding balance
   Future<List<SupplierModel>> getSuppliersWithDues() async {
     final db = await _dbHelper.database;
-    final maps = await db.query('suppliers',
-        where: 'is_active = ? AND current_balance > 0', whereArgs: [1], orderBy: 'current_balance DESC');
+    final maps = await db.rawQuery('''
+      SELECT s.*, $_balanceSubquery as current_balance
+      FROM suppliers s
+      WHERE s.is_active = 1
+        AND ($_balanceSubquery) > 0
+      ORDER BY current_balance DESC
+    ''');
     return maps.map((m) => SupplierModel.fromMap(m)).toList();
   }
 
   /// Get total amount owed to all suppliers
   Future<double> getTotalPayable() async {
     final db = await _dbHelper.database;
-    final result = await db.rawQuery(
-        'SELECT COALESCE(SUM(current_balance), 0) as total FROM suppliers WHERE is_active = 1');
+    final result = await db.rawQuery('''
+      SELECT COALESCE(SUM(
+        (SELECT SUM(t.credit_amount) FROM transactions t
+         WHERE t.party_id = s.id AND t.party_type = 'supplier'
+           AND t.transaction_type = 'BUY'
+           AND t.payment_status IN ('CREDIT', 'PARTIAL')
+           AND t.status != 'CANCELLED')
+      ), 0) as total
+      FROM suppliers s WHERE s.is_active = 1
+    ''');
     return (result.first['total'] as num).toDouble();
   }
 
@@ -110,7 +147,9 @@ class SupplierService {
         COALESCE(SUM(t.paid_amount), 0)
           + COALESCE((SELECT SUM(amount) FROM supplier_payments WHERE supplier_id = ?), 0)
           as total_paid,
-        (SELECT current_balance FROM suppliers WHERE id = ?) as total_credit,
+        (SELECT COALESCE(SUM(credit_amount), 0) FROM transactions
+         WHERE party_id = ? AND party_type = 'supplier' AND transaction_type = 'BUY'
+           AND payment_status IN ('CREDIT', 'PARTIAL') AND status != 'CANCELLED') as total_credit,
         MAX(t.transaction_date) as last_purchase_date
       FROM transactions t
       WHERE t.party_id = ? AND t.party_type = 'supplier' AND t.transaction_type = 'BUY'
