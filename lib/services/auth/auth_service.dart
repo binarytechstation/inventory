@@ -1,6 +1,7 @@
 import 'package:bcrypt/bcrypt.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/user_model.dart';
+import '../../core/device_fingerprint/device_fingerprint.dart';
 
 class AuthService {
   static AuthService? _instance;
@@ -264,6 +265,50 @@ class AuthService {
       return true;
     } catch (e) {
       print('Deactivate user error: $e');
+      return false;
+    }
+  }
+
+  /// Get the device recovery code (first 8 hex chars of fingerprint, formatted XXXX-XXXX)
+  Future<String> getDeviceRecoveryCode() async {
+    final fingerprint = await DeviceFingerprint().generateFingerprint();
+    final code = fingerprint.substring(0, 8).toUpperCase();
+    return '${code.substring(0, 4)}-${code.substring(4, 8)}';
+  }
+
+  /// Reset a user's password using the device recovery code.
+  /// Returns true if username exists and code matches this device.
+  Future<bool> resetPasswordWithRecoveryCode(String username, String enteredCode) async {
+    try {
+      final expected = await getDeviceRecoveryCode();
+      final normalizedEntered = enteredCode.replaceAll('-', '').toUpperCase();
+      final normalizedExpected = expected.replaceAll('-', '').toUpperCase();
+
+      if (normalizedEntered != normalizedExpected) return false;
+
+      final db = await _dbHelper.database;
+      final results = await db.query(
+        'users',
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+      if (results.isEmpty) return false;
+
+      final user = UserModel.fromMap(results.first);
+      final passwordHash = BCrypt.hashpw('admin', BCrypt.gensalt());
+      await db.update(
+        'users',
+        {
+          'password_hash': passwordHash,
+          'must_change_password': 1,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [user.id],
+      );
+      return true;
+    } catch (e) {
+      print('Reset password error: $e');
       return false;
     }
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -236,6 +237,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Security
           _buildSectionTitle('Security'),
+          _buildSettingsTile(
+            icon: Icons.vpn_key,
+            title: 'Device Recovery Code',
+            subtitle: 'Save this code to reset your password if locked out',
+            onTap: () => _showRecoveryCodeDialog(),
+          ),
           _buildSettingsTile(
             icon: Icons.history,
             title: 'Activity Log',
@@ -777,6 +784,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await txn.delete('transactions');
 
         // Delete lot-based inventory tables (in correct order to respect foreign keys)
+        await txn.delete('defective_stock');
         await txn.delete('lot_history');
         await txn.delete('stock');
         await txn.delete('products');
@@ -946,6 +954,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _showRecoveryCodeDialog() async {
+    String? code;
+    try {
+      code = await _authService.getDeviceRecoveryCode();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.vpn_key, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Device Recovery Code'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Write down or photograph this code and store it safely. '
+              'You will need it to reset your password if you get locked out.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 2),
+                ),
+                child: Text(
+                  code ?? 'Unable to generate',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This code is unique to this device and never changes.',
+                      style: TextStyle(fontSize: 11, color: Colors.blue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (code != null)
+            TextButton.icon(
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copy'),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: code!));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Recovery code copied to clipboard')),
+                );
+              },
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showLicenseDialog() async {

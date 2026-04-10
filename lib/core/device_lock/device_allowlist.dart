@@ -15,7 +15,8 @@ class DeviceAllowlist {
   static const List<String> authorizedDevices = [
     // ── Add authorized fingerprints below ──────────────────────────────
     'ed86baffec1d2f3cb492de856696aab1507c5ebe0c8a2b336087b4507b6a1197',  // Label: developer pc #1
-    '45f57b370a6006e3d3c685c915fb81f5c809f3b62f1aa0c01fd8fff090bf1197',  // Label: Branch PC #1
+    '45f57b370a6006e3d3c685c915fb81f5c809f3b62f1aa0c01fd8fff090bf1197',
+    '18e60fc95af284c3033775b7746dc018206ff7ea5e143d9ae3fe2b7f6a4f533d' 
     // ───────────────────────────────────────────────────────────────────
   ];
 

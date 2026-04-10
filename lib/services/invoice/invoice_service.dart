@@ -166,12 +166,50 @@ class InvoiceService {
     return settings;
   }
 
+  /// Load Unicode-capable TTF fonts from Windows system fonts
+  Future<({pw.ThemeData? theme, pw.Font? base})> _loadTheme() async {
+    try {
+      final regularFile = File('C:\\Windows\\Fonts\\arial.ttf');
+      final boldFile    = File('C:\\Windows\\Fonts\\arialbd.ttf');
+      final italicFile  = File('C:\\Windows\\Fonts\\ariali.ttf');
+      final courierFile = File('C:\\Windows\\Fonts\\cour.ttf');
+
+      if (!regularFile.existsSync() || !boldFile.existsSync()) {
+        return (theme: null, base: null);
+      }
+
+      final regular = pw.Font.ttf((await regularFile.readAsBytes()).buffer.asByteData());
+      final bold    = pw.Font.ttf((await boldFile.readAsBytes()).buffer.asByteData());
+      final italic  = italicFile.existsSync()
+          ? pw.Font.ttf((await italicFile.readAsBytes()).buffer.asByteData())
+          : regular;
+
+      // Load Courier New as font fallback to suppress "Courier has no Unicode support" warnings
+      final List<pw.Font> fallback = [];
+      if (courierFile.existsSync()) {
+        fallback.add(pw.Font.ttf((await courierFile.readAsBytes()).buffer.asByteData()));
+      }
+
+      final theme = pw.ThemeData.withFont(
+        base: regular,
+        bold: bold,
+        italic: italic,
+        boldItalic: bold,
+        fontFallback: fallback,
+      );
+      return (theme: theme, base: regular);
+    } catch (_) {
+      return (theme: null, base: null);
+    }
+  }
+
   /// Build the PDF document
   Future<pw.Document> _buildInvoicePDF(
     Map<String, dynamic> transaction,
     Map<String, dynamic> settings,
   ) async {
     final pdf = pw.Document();
+    final (:theme, base: _) = await _loadTheme();
 
     final headerSettings = settings['header'] as Map<String, dynamic>?;
     final footerSettings = settings['footer'] as Map<String, dynamic>?;
@@ -179,13 +217,9 @@ class InvoiceService {
     final printSettings = settings['print'] as Map<String, dynamic>?;
     final profile = settings['profile'] as Map<String, dynamic>?;
 
-    // Get currency symbol from transaction (preserves historical currency)
     // Use 'Tk' for PDF compatibility instead of '৳' which has font rendering issues
     String currencySymbol = transaction['currency_symbol'] as String? ?? 'Tk';
-    // Replace ৳ with Tk for PDF rendering
-    if (currencySymbol == '৳') {
-      currencySymbol = 'Tk';
-    }
+    if (currencySymbol == '৳') currencySymbol = 'Tk';
 
     // Watermark settings
     final showWatermark = (printSettings?['show_watermark'] == 1 ||
@@ -199,71 +233,77 @@ class InvoiceService {
     final barcodeContent = printSettings?['barcode_content'] as String? ?? transaction['invoice_number'] as String;
 
     pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Stack(
-            children: [
-              // Main content
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  _buildHeader(transaction, headerSettings, profile),
-                  pw.SizedBox(height: 20),
-
-                  // Invoice details with barcode
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Expanded(child: _buildInvoiceDetails(transaction, headerSettings)),
-                      if (showBarcode) ...[
-                        pw.SizedBox(width: 20),
-                        _buildBarcode(barcodeContent),
-                      ],
-                    ],
-                  ),
-                  pw.SizedBox(height: 20),
-
-                  // Party details
-                  if ((bodySettings?['show_party_name'] as int? ?? 1) == 1)
-                    _buildPartyDetails(transaction, bodySettings),
-                  pw.SizedBox(height: 20),
-
-                  // Items table
-                  _buildItemsTable(transaction, bodySettings, currencySymbol),
-                  pw.SizedBox(height: 20),
-
-                  // Totals
-                  _buildTotals(transaction, bodySettings, currencySymbol),
-
-                  // Footer
-                  pw.Spacer(),
-                  _buildFooter(footerSettings, bodySettings, transaction),
-                ],
-              ),
-              // Watermark overlay
-              if (showWatermark)
-                pw.Center(
-                  child: pw.Transform.rotate(
-                    angle: -0.5,
-                    child: pw.Opacity(
-                      opacity: watermarkOpacity,
-                      child: pw.Text(
-                        watermarkText,
-                        style: pw.TextStyle(
-                          fontSize: 80,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.grey,
+      pw.MultiPage(
+        pageTheme: pw.PageTheme(
+          pageFormat: PdfPageFormat.a4,
+          theme: theme,
+          buildBackground: showWatermark
+              ? (pw.Context context) => pw.Center(
+                    child: pw.Transform.rotate(
+                      angle: -0.5,
+                      child: pw.Opacity(
+                        opacity: watermarkOpacity,
+                        child: pw.Text(
+                          watermarkText,
+                          style: pw.TextStyle(
+                            fontSize: 80,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.grey,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                  )
+              : null,
+        ),
+        header: (pw.Context context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            _buildHeader(transaction, headerSettings, profile),
+            pw.SizedBox(height: 10),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(child: _buildInvoiceDetails(transaction, headerSettings)),
+                if (showBarcode) ...[
+                  pw.SizedBox(width: 20),
+                  _buildBarcode(barcodeContent),
+                ],
+              ],
+            ),
+            pw.SizedBox(height: 10),
+            if ((bodySettings?['show_party_name'] as int? ?? 1) == 1) ...[
+              _buildPartyDetails(transaction, bodySettings),
+              pw.SizedBox(height: 10),
             ],
-          );
-        },
+          ],
+        ),
+        footer: (pw.Context context) => pw.Container(
+          padding: const pw.EdgeInsets.only(top: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Page ${context.pageNumber} of ${context.pagesCount}',
+                style: pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+              ),
+            ],
+          ),
+        ),
+        build: (pw.Context context) => [
+          // Items table
+          _buildItemsTable(transaction, bodySettings, currencySymbol),
+          pw.SizedBox(height: 15),
+          // Totals
+          _buildTotals(transaction, bodySettings, currencySymbol),
+          pw.SizedBox(height: 20),
+          // Footer content: terms, signature, QR, footer text
+          _buildFooter(footerSettings, bodySettings, transaction),
+        ],
       ),
     );
 
@@ -693,18 +733,17 @@ class InvoiceService {
     Map<String, dynamic>? bodySettings,
     Map<String, dynamic> transaction,
   ) {
-    final showFooterText = (footerSettings?['show_footer_text'] == 1 ||
-                            footerSettings?['show_footer_text'] == true);
-    final footerText = footerSettings?['footer_text'] as String? ??
-                       'Thank you for your business!';
-    final showTerms = (footerSettings?['show_terms_and_conditions'] == 1 ||
-                       footerSettings?['show_terms_and_conditions'] == true);
+    // Default booleans to ON (1) when settings row is missing
+    bool flag(String key, {int defaultVal = 1}) =>
+        (footerSettings?[key] as int? ?? defaultVal) == 1;
+
+    final showFooterText = flag('show_footer_text');
+    final footerText = footerSettings?['footer_text'] as String? ?? 'Thank you for your business!';
+    final showTerms = flag('show_terms_and_conditions');
     final terms = footerSettings?['terms_and_conditions'] as String?;
-    final showPaymentInstructions = (footerSettings?['show_payment_instructions'] == 1 ||
-                                    footerSettings?['show_payment_instructions'] == true);
+    final showPaymentInstructions = flag('show_payment_instructions', defaultVal: 0);
     final paymentInstructions = footerSettings?['payment_instructions'] as String?;
-    final showBankDetails = (footerSettings?['show_bank_details'] == 1 ||
-                             footerSettings?['show_bank_details'] == true);
+    final showBankDetails = flag('show_bank_details', defaultVal: 0);
     final bankName = footerSettings?['bank_name'] as String?;
     final accountHolder = footerSettings?['account_holder_name'] as String?;
     final accountNumber = footerSettings?['account_number'] as String?;
@@ -712,11 +751,10 @@ class InvoiceService {
     final iban = footerSettings?['iban'] as String?;
 
     // Signature and stamp settings
-    final showSignature = (footerSettings?['show_signature'] == 1 ||
-                           footerSettings?['show_signature'] == true);
+    final showSignature = flag('show_signature');
     final signaturePath = footerSettings?['signature_image_path'] as String?;
     final signatureLabel = footerSettings?['signature_label'] as String? ?? 'Authorized Signature';
-    final signaturePositionRaw = (footerSettings?['signature_position'] as String? ?? 'LEFT').toUpperCase();
+    final signaturePositionRaw = (footerSettings?['signature_position'] as String? ?? 'RIGHT').toUpperCase();
     final pw.MainAxisAlignment signatureAlignment;
     switch (signaturePositionRaw) {
       case 'RIGHT':
@@ -729,8 +767,7 @@ class InvoiceService {
         signatureAlignment = pw.MainAxisAlignment.start;
     }
 
-    final showStamp = (footerSettings?['show_stamp'] == 1 ||
-                       footerSettings?['show_stamp'] == true);
+    final showStamp = flag('show_stamp', defaultVal: 0);
     final stampPath = footerSettings?['stamp_image_path'] as String?;
 
     // Load signature image if available
@@ -765,9 +802,11 @@ class InvoiceService {
     if (showQR) {
       try {
         // Replace placeholders in QR content
+        final totalStr = (transaction['total_amount'] as num).toStringAsFixed(2);
         String qrText = qrContent
             .replaceAll('{invoice_number}', transaction['invoice_number'] as String)
-            .replaceAll('{total}', (transaction['total_amount'] as num).toStringAsFixed(2))
+            .replaceAll('{total_amount}', totalStr)
+            .replaceAll('{total}', totalStr)
             .replaceAll('{date}', DateFormat('dd/MM/yyyy').format(DateTime.parse(transaction['transaction_date'] as String)));
 
         // Generate QR code using BarcodeWidget
@@ -776,6 +815,7 @@ class InvoiceService {
           data: qrText,
           width: qrSize.toDouble(),
           height: qrSize.toDouble(),
+          drawText: false,
         );
       } catch (e) {
         // QR generation failed, continue without QR code
@@ -833,23 +873,27 @@ class InvoiceService {
           pw.SizedBox(height: 10),
         ],
         // Signature and stamp row
-        if (signatureImage != null || stampImage != null) ...[
+        if (showSignature || stampImage != null) ...[
           pw.Row(
             mainAxisAlignment: stampImage != null ? pw.MainAxisAlignment.spaceEvenly : signatureAlignment,
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              // Signature section
-              if (signatureImage != null)
+              // Signature section — shown even without image (empty line for manual signing)
+              if (showSignature)
                 pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
                   children: [
-                    pw.Container(
-                      width: 150,
-                      height: 80,
-                      decoration: pw.BoxDecoration(
-                        border: pw.Border.all(color: PdfColors.grey300),
+                    if (signatureImage != null) ...[
+                      pw.Container(
+                        width: 150,
+                        height: 70,
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(color: PdfColors.grey300),
+                        ),
+                        child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
                       ),
-                      child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
-                    ),
+                    ] else
+                      pw.SizedBox(height: 50), // blank space for manual signature
                     pw.SizedBox(height: 5),
                     pw.Container(
                       width: 150,

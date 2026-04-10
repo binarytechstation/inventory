@@ -30,7 +30,19 @@
       "Read(//c/Program Files \\(x86\\)/Inno Setup 6/**)",
       "Read(//c/Program Files/**)",
       "Bash(\"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" \"d:/BiTS Projects/inventory/installer/inventory_setup.iss\")",
-      "Bash(cmd /c \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\get_device_id.bat\")"
+      "Bash(cmd /c \"d:\\\\BiTS Projects\\\\inventory\\\\installer\\\\get_device_id.bat\")",
+      "Bash(powershell -Command \"Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer' | Select-Object Name; Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\assets' | Select-Object Name\")",
+      "Bash(powershell -Command \"Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\icons' -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\images' -ErrorAction SilentlyContinue | Select-Object Name\")",
+      "Bash(powershell -Command \"if\\(Test-Path 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\icons'\\){Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\icons' | Select-Object Name} else { 'no icons folder' }; if\\(Test-Path 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\images'\\){Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\images' | Select-Object Name} else { 'no images folder' }\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\iscc.exe' 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss' 2>&1\")",
+      "Bash(powershell -Command \"Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\Output' | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\iscc.exe' 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss' 2>&1 | Select-String -Pattern 'Warning|Error|Successful|filename'\")",
+      "Bash(powershell -Command \"Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\Output'\")",
+      "Bash(powershell -Command \"Remove-Item 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\Output\\\\IMS_Setup_v{#AppVersion}.exe' -Force; Get-ChildItem 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\Output'\")",
+      "Bash(powershell -Command \"Get-ChildItem 'C:\\\\Program Files \\(x86\\)\\\\Windows Kits\\\\10\\\\bin' -Recurse -Filter 'signtool.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName\")",
+      "Bash(powershell -Command \"Get-ChildItem 'C:\\\\Program Files \\(x86\\)\\\\Windows Kits\\\\10\\\\bin\\\\10.0.26100.0' -Filter 'signtool.exe' | Select-Object FullName\")",
+      "Bash(powershell -Command \"Get-ChildItem 'C:\\\\Program Files \\(x86\\)\\\\Windows Kits\\\\10\\\\bin' -Recurse -Filter 'signtool.exe' | Select-Object FullName\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\iscc.exe' 'd:\\\\BiTS Projects\\\\inventory\\\\installer\\\\inventory_setup.iss' 2>&1 | Select-String -Pattern 'Warning|Error|Successful|filename|Output'\")"
     ],
     "deny": [],
     "ask": []

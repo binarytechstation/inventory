@@ -1567,6 +1567,83 @@ class _ProductsScreenState extends State<ProductsScreen>
     }
   }
 
+  Future<void> _deleteCategory(String categoryName) async {
+    final products = _groupedByCategory[categoryName] ?? [];
+    final productCount = products.length;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 28),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Delete Category')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Delete category "${categoryName}"?',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            if (productCount > 0) ...[
+              Text(
+                '$productCount product(s) in this category will be moved to "Uncategorized".',
+                style: TextStyle(color: Colors.orange.shade700, fontSize: 13),
+              ),
+            ] else
+              const Text('This category is empty.'),
+            const SizedBox(height: 8),
+            const Text(
+              'This action cannot be undone.',
+              style: TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await _productService.deleteCategoryAndReassign(categoryName);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Category "$categoryName" deleted'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadProducts();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting category: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteProduct(String productName) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -2000,6 +2077,12 @@ class _ProductsScreenState extends State<ProductsScreen>
                           ],
                         ),
                       ),
+                      if (category != 'Uncategorized')
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.white70, size: 22),
+                          tooltip: 'Delete category',
+                          onPressed: () => _deleteCategory(category),
+                        ),
                       Icon(
                         isExpanded ? Icons.expand_less : Icons.expand_more,
                         color: Colors.white,

@@ -429,138 +429,140 @@ class InvoiceSettingsService {
     };
   }
 
-  /// Initialize default settings for an invoice type
+  /// Initialize default settings for an invoice type (only creates missing rows)
   Future<void> initializeDefaultSettings(String invoiceType) async {
     final now = DateTime.now().toIso8601String();
 
-    // Check if settings already exist
-    final existing = await getInvoiceSettings(invoiceType);
-    if (existing != null) return;
-
     final db = await _dbHelper.database;
 
-    // Create default general settings
-    await db.insert('invoice_settings', {
-      'invoice_type': invoiceType,
-      'prefix': invoiceType == 'SALE' ? 'INV' : 'PUR',
-      'starting_number': 1000,
-      'current_number': 1000,
-      'number_format': 'PREFIX-NNNN',
-      'enable_auto_increment': 1,
-      'reset_period': 'NEVER',
-      'currency_code': 'USD',
-      'currency_symbol': '\$',
-      'default_tax_rate': 0,
-      'enable_tax_by_default': 1,
-      'enable_discount_by_default': 0,
-      'decimal_places': 2,
-      'date_format': 'dd/MM/yyyy',
-      'time_format': 'HH:mm',
-      'language': 'en',
-      'is_active': 1,
-      'created_at': now,
-      'updated_at': now,
-    });
+    // Each section only inserts if that table's row is missing for this invoice type
+    if (await getInvoiceSettings(invoiceType) == null) {
+      await db.insert('invoice_settings', {
+        'invoice_type': invoiceType,
+        'prefix': invoiceType == 'SALE' ? 'INV' : 'PUR',
+        'starting_number': 1000,
+        'current_number': 1000,
+        'number_format': 'PREFIX-NNNN',
+        'enable_auto_increment': 1,
+        'reset_period': 'NEVER',
+        'currency_code': 'USD',
+        'currency_symbol': '\$',
+        'default_tax_rate': 0,
+        'enable_tax_by_default': 1,
+        'enable_discount_by_default': 0,
+        'decimal_places': 2,
+        'date_format': 'dd/MM/yyyy',
+        'time_format': 'HH:mm',
+        'language': 'en',
+        'is_active': 1,
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
 
-    // Create default header settings
-    await db.insert('invoice_header_settings', {
-      'invoice_type': invoiceType,
-      'show_company_logo': 1,
-      'logo_width': 150,
-      'logo_height': 80,
-      'logo_position': 'LEFT',
-      'show_company_address': 1,
-      'show_company_phone': 1,
-      'show_company_email': 1,
-      'show_tax_id': 1,
-      'tax_id_label': 'Tax ID',
-      'page_size': 'A4',
-      'page_orientation': 'PORTRAIT',
-      'header_alignment': 'LEFT',
-      'header_text_color': '#000000',
-      'show_invoice_title': 1,
-      'invoice_title': 'INVOICE',
-      'title_font_size': 24,
-      'show_invoice_number': 1,
-      'show_invoice_date': 1,
-      'show_due_date': 1,
-      'created_at': now,
-      'updated_at': now,
-    });
+    if (await getHeaderSettings(invoiceType) == null) {
+      await db.insert('invoice_header_settings', {
+        'invoice_type': invoiceType,
+        'show_company_logo': 1,
+        'logo_width': 150,
+        'logo_height': 80,
+        'logo_position': 'LEFT',
+        'show_company_address': 1,
+        'show_company_phone': 1,
+        'show_company_email': 1,
+        'show_tax_id': 1,
+        'tax_id_label': 'Tax ID',
+        'page_size': 'A4',
+        'page_orientation': 'PORTRAIT',
+        'header_alignment': 'LEFT',
+        'header_text_color': '#000000',
+        'show_invoice_title': 1,
+        'invoice_title': 'INVOICE',
+        'title_font_size': 24,
+        'show_invoice_number': 1,
+        'show_invoice_date': 1,
+        'show_due_date': 1,
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
 
-    // Create default footer settings
-    await db.insert('invoice_footer_settings', {
-      'invoice_type': invoiceType,
-      'show_footer_text': 1,
-      'footer_text': 'Thank you for your business!',
-      'footer_font_size': 10,
-      'footer_alignment': 'CENTER',
-      'show_terms_and_conditions': 1,
-      'show_signature': 1,
-      'signature_label': 'Authorized Signature',
-      'signature_position': 'RIGHT',
-      'show_page_numbers': 1,
-      'page_number_format': 'Page {current} of {total}',
-      'show_generated_info': 1,
-      'generated_info_text': 'Generated on {date} at {time}',
-      'footer_text_color': '#666666',
-      'created_at': now,
-      'updated_at': now,
-    });
+    if (await getFooterSettings(invoiceType) == null) {
+      await db.insert('invoice_footer_settings', {
+        'invoice_type': invoiceType,
+        'show_footer_text': 1,
+        'footer_text': 'Thank you for your business!',
+        'footer_font_size': 10,
+        'footer_alignment': 'CENTER',
+        'show_terms_and_conditions': 1,
+        'show_signature': 1,
+        'signature_label': 'Authorized Signature',
+        'signature_position': 'RIGHT',
+        'show_page_numbers': 1,
+        'page_number_format': 'Page {current} of {total}',
+        'show_generated_info': 1,
+        'generated_info_text': 'Generated on {date} at {time}',
+        'footer_text_color': '#666666',
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
 
-    // Create default body settings
-    await db.insert('invoice_body_settings', {
-      'invoice_type': invoiceType,
-      'show_party_details': 1,
-      'party_label': invoiceType == 'SALE' ? 'Bill To' : 'Supplier',
-      'show_party_name': 1,
-      'show_party_company': 1,
-      'show_party_address': 1,
-      'show_party_phone': 1,
-      'show_party_email': 1,
-      'show_item_code': 1,
-      'show_item_description': 1,
-      'show_unit_column': 1,
-      'show_quantity_column': 1,
-      'show_unit_price_column': 1,
-      'show_discount_column': 1,
-      'show_tax_column': 1,
-      'show_amount_column': 1,
-      'item_table_headers': '["#","Item","Quantity","Unit Price","Amount"]',
-      'table_border_style': 'SOLID',
-      'table_border_color': '#CCCCCC',
-      'table_header_bg_color': '#F5F5F5',
-      'show_subtotal': 1,
-      'show_total_discount': 1,
-      'show_total_tax': 1,
-      'show_grand_total': 1,
-      'grand_total_label': 'Grand Total',
-      'grand_total_font_size': 16,
-      'show_amount_in_words': 1,
-      'amount_in_words_label': 'Amount in Words',
-      'color_theme': 'DEFAULT',
-      'created_at': now,
-      'updated_at': now,
-    });
+    if (await getBodySettings(invoiceType) == null) {
+      await db.insert('invoice_body_settings', {
+        'invoice_type': invoiceType,
+        'show_party_details': 1,
+        'party_label': invoiceType == 'SALE' ? 'Bill To' : 'Supplier',
+        'show_party_name': 1,
+        'show_party_company': 1,
+        'show_party_address': 1,
+        'show_party_phone': 1,
+        'show_party_email': 1,
+        'show_item_code': 1,
+        'show_item_description': 1,
+        'show_unit_column': 1,
+        'show_quantity_column': 1,
+        'show_unit_price_column': 1,
+        'show_discount_column': 1,
+        'show_tax_column': 1,
+        'show_amount_column': 1,
+        'item_table_headers': '["#","Item","Quantity","Unit Price","Amount"]',
+        'table_border_style': 'SOLID',
+        'table_border_color': '#CCCCCC',
+        'table_header_bg_color': '#F5F5F5',
+        'show_subtotal': 1,
+        'show_total_discount': 1,
+        'show_total_tax': 1,
+        'show_grand_total': 1,
+        'grand_total_label': 'Grand Total',
+        'grand_total_font_size': 16,
+        'show_amount_in_words': 1,
+        'amount_in_words_label': 'Amount in Words',
+        'color_theme': 'DEFAULT',
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
 
-    // Create default print settings
-    await db.insert('invoice_print_settings', {
-      'invoice_type': invoiceType,
-      'paper_size': 'A4',
-      'paper_orientation': 'PORTRAIT',
-      'layout_type': 'STANDARD',
-      'print_format': 'PDF',
-      'copies': 1,
-      'print_color': 1,
-      'margin_top': 20.0,
-      'margin_bottom': 20.0,
-      'margin_left': 20.0,
-      'margin_right': 20.0,
-      'show_print_dialog': 1,
-      'compress_pdf': 1,
-      'pdf_quality': 90,
-      'created_at': now,
-      'updated_at': now,
-    });
+    if (await getPrintSettings(invoiceType) == null) {
+      await db.insert('invoice_print_settings', {
+        'invoice_type': invoiceType,
+        'paper_size': 'A4',
+        'paper_orientation': 'PORTRAIT',
+        'layout_type': 'STANDARD',
+        'print_format': 'PDF',
+        'copies': 1,
+        'print_color': 1,
+        'margin_top': 20.0,
+        'margin_bottom': 20.0,
+        'margin_left': 20.0,
+        'margin_right': 20.0,
+        'show_print_dialog': 1,
+        'compress_pdf': 1,
+        'pdf_quality': 90,
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
   }
 }

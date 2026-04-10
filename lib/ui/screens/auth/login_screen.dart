@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../../services/auth/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  final AuthService _authService = AuthService();
   bool _obscurePassword = true;
   String? _errorMessage;
 
@@ -58,6 +60,153 @@ class _LoginScreenState extends State<LoginScreen> {
         _errorMessage = 'Invalid username or password';
       });
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    final usernameController = TextEditingController(text: _usernameController.text.trim());
+    final codeController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+    String? recoveryCode;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock_reset, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Reset Password'),
+            ],
+          ),
+          content: SizedBox(
+            width: 360,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      'Enter your username and the device recovery code.\n\n'
+                      'You can find your recovery code in Settings → Security → Recovery Code.\n\n'
+                      'Your password will be reset to "admin" and you will be required to change it.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: usernameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Enter username' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: codeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Device Recovery Code (e.g. A1B2-C3D4)',
+                      prefixIcon: Icon(Icons.vpn_key),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    validator: (v) => (v == null || v.isEmpty) ? 'Enter recovery code' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  // Show device code hint button
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Show this device\'s code', style: TextStyle(fontSize: 12)),
+                    onPressed: () async {
+                      final code = await _authService.getDeviceRecoveryCode();
+                      setDialogState(() => recoveryCode = code);
+                    },
+                  ),
+                  if (recoveryCode != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.computer, size: 16, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            'This device: $recoveryCode',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() => isLoading = true);
+                      final success = await _authService.resetPasswordWithRecoveryCode(
+                        usernameController.text.trim(),
+                        codeController.text.trim(),
+                      );
+                      if (!context.mounted) return;
+                      setDialogState(() => isLoading = false);
+                      if (success) {
+                        Navigator.pop(context);
+                        _usernameController.text = usernameController.text.trim();
+                        _passwordController.text = 'admin';
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Password reset to "admin". Please log in and change it.'),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Invalid username or recovery code.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: isLoading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Reset Password', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showChangePasswordDialog() {
@@ -232,6 +381,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                       onFieldSubmitted: (_) => _handleLogin(),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _showForgotPasswordDialog,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
                     ),
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 16),

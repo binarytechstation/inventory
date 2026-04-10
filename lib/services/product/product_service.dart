@@ -510,6 +510,18 @@ class ProductService {
     await db.delete('categories', where: 'name = ?', whereArgs: [name]);
   }
 
+  // Delete a category and move its products to Uncategorized
+  Future<void> deleteCategoryAndReassign(String name) async {
+    final db = await _dbHelper.database;
+    await db.transaction((txn) async {
+      await txn.rawUpdate(
+        'UPDATE products SET category = ? WHERE category = ?',
+        ['Uncategorized', name],
+      );
+      await txn.delete('categories', where: 'name = ?', whereArgs: [name]);
+    });
+  }
+
   // Get product master catalog (for quick selection)
   Future<List<Map<String, dynamic>>> getProductMasterCatalog() async {
     final db = await _dbHelper.database;
