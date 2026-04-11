@@ -753,95 +753,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _performClearData() async {
-    try {
-      // Show loading
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Clearing all data...'),
-            ],
-          ),
+    await _resetAndRestart(loadingMessage: 'Clearing all data...');
+  }
+
+  /// Deletes the physical DB file, recreates it with the latest schema,
+  /// reinitialises the admin account, then navigates back to the login screen.
+  Future<void> _resetAndRestart({String loadingMessage = 'Resetting database...'}) async {
+    if (!mounted) return;
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(loadingMessage),
+          ],
         ),
-      );
+      ),
+    );
 
-      final db = await _dbHelper.database;
+    try {
+      // 1. Delete file + recreate with current schema
+      await _dbHelper.resetDatabase();
 
-      // Delete data from all tables (except users table - we'll keep admin)
-      await db.transaction((txn) async {
-        // Delete all held bills and their items
-        await txn.delete('held_bill_items');
-        await txn.delete('held_bills');
+      // 2. Reinitialise default admin (admin / admin, must change on first login)
+      await _authService.initializeDefaultAdmin();
 
-        // Delete all transactions and related data
-        await txn.delete('transaction_lines');
-        await txn.delete('transactions');
-
-        // Delete lot-based inventory tables (in correct order to respect foreign keys)
-        await txn.delete('defective_stock');
-        await txn.delete('lot_history');
-        await txn.delete('stock');
-        await txn.delete('products');
-        await txn.delete('product_master');
-        await txn.delete('lots');
-
-        // Delete all suppliers and customers
-        await txn.delete('suppliers');
-        await txn.delete('customers');
-
-        // Delete all users except admin
-        await txn.delete('users', where: 'username != ?', whereArgs: ['admin']);
-
-        // Clear recovery codes
-        await txn.delete('recovery_codes');
-
-        // Clear audit logs
-        await txn.delete('audit_logs');
-
-        // Reset profile to default
-        await txn.delete('profile');
-
-        // Clear settings
-        await txn.delete('settings');
-      });
-
-      // Close loading
       if (!mounted) return;
+      // 3. Close loading dialog
       Navigator.pop(context);
 
-      // Show success
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Data Cleared'),
-          content: const Text(
-            'All data has been deleted successfully.\n\nOnly the admin account remains.',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
+      // 4. Navigate to login — clears the entire navigation stack
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Database reset. Please log in again.'),
+          backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
-      // Close loading
       if (!mounted) return;
-      Navigator.pop(context);
-
-      // Show error
-      if (!mounted) return;
+      Navigator.pop(context); // close loading
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to clear data: $e'),
+          content: Text('Failed: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -894,66 +855,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _performDatabaseReset() async {
-    try {
-      // Show loading
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Resetting database...'),
-            ],
-          ),
-        ),
-      );
-
-      // Delete the database
-      await _dbHelper.deleteDatabase();
-
-      // Close loading
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      // Show success and exit
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Database Reset Complete'),
-          content: const Text(
-            'Database has been reset successfully!\n\nThe application will now restart.',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                // Exit the app
-                exit(0);
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      // Close loading
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      // Show error
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to reset database: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    await _resetAndRestart(loadingMessage: 'Resetting database...');
   }
 
   Future<void> _showRecoveryCodeDialog() async {

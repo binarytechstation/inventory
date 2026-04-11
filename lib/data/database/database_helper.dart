@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 11,
+      version: 12,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -580,6 +580,49 @@ class DatabaseHelper {
       }
       print('Migration v11 complete!');
     }
+
+    if (oldVersion < 12) {
+      print('Migrating to v12: ensure all v8 columns present on fresh-installed databases...');
+
+      // transactions: paid_amount, credit_amount, payment_status
+      final txCols = await db.rawQuery('PRAGMA table_info(transactions)');
+      if (!txCols.any((c) => c['name'] == 'paid_amount')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0');
+      }
+      if (!txCols.any((c) => c['name'] == 'credit_amount')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN credit_amount REAL DEFAULT 0');
+      }
+      if (!txCols.any((c) => c['name'] == 'payment_status')) {
+        await db.execute("ALTER TABLE transactions ADD COLUMN payment_status TEXT DEFAULT 'PAID'");
+      }
+      await db.execute('''
+        UPDATE transactions
+        SET paid_amount   = CASE WHEN payment_mode = 'credit' THEN 0 ELSE total_amount END,
+            credit_amount = CASE WHEN payment_mode = 'credit' THEN total_amount ELSE 0 END,
+            payment_status = CASE WHEN payment_mode = 'credit' THEN 'CREDIT' ELSE 'PAID' END
+        WHERE paid_amount = 0 AND credit_amount = 0
+      ''');
+
+      // suppliers: credit_limit, current_balance
+      final supCols = await db.rawQuery('PRAGMA table_info(suppliers)');
+      if (!supCols.any((c) => c['name'] == 'credit_limit')) {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN credit_limit REAL DEFAULT 0');
+      }
+      if (!supCols.any((c) => c['name'] == 'current_balance')) {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN current_balance REAL DEFAULT 0');
+      }
+
+      // transaction_lines: return_type, is_refundable
+      final lineCols = await db.rawQuery('PRAGMA table_info(transaction_lines)');
+      if (!lineCols.any((c) => c['name'] == 'return_type')) {
+        await db.execute("ALTER TABLE transaction_lines ADD COLUMN return_type TEXT DEFAULT 'NORMAL'");
+      }
+      if (!lineCols.any((c) => c['name'] == 'is_refundable')) {
+        await db.execute('ALTER TABLE transaction_lines ADD COLUMN is_refundable INTEGER DEFAULT 1');
+      }
+
+      print('Migration v12 complete!');
+    }
   }
 
   Future<void> _seedInvoiceTypeSettings(Database db) async {
@@ -810,6 +853,13 @@ class DatabaseHelper {
     if (await dbFile.exists()) {
       await dbFile.delete();
     }
+  }
+
+  /// Delete and fully recreate the database with the latest schema.
+  /// After this call the singleton is ready to use — no app restart needed.
+  Future<void> resetDatabase() async {
+    await deleteDatabase();   // close connection + delete file
+    await database;           // recreate with current schema + run _onCreate
   }
 
   /// Get database size
